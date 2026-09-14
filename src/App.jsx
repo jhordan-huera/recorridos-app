@@ -3,14 +3,15 @@ import { Analytics } from '@vercel/analytics/react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/layout/Layout';
 import Alert from './components/ui/Alert';
+import LoadingBar from './components/ui/LoadingBar';
 import { AppProvider } from './context/AppContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { AlertProvider } from './context/AlertContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import AdminRoute from './components/AdminRoute';
 import IdleTimerHandler from './components/IdleTimerHandler';
-import './App.css';
 import { Suspense, lazy } from 'react';
+import { Route as RouteIcon } from 'lucide-react';
 
 // Lazy loading components for better performance
 const Dashboard = lazy(() => import('./pages/Dashboard'));
@@ -27,25 +28,17 @@ function AppContent() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center">
-        <div className="relative flex items-center justify-center mb-8">
-          {/* Efecto de respiración (Glow) */}
-          <div className="absolute inset-0 bg-primary-500/20 rounded-2xl blur-xl animate-pulse"></div>
-
-          {/* Logo Container */}
-          <div className="relative w-16 h-16 bg-primary-600 rounded-2xl flex items-center justify-center shadow-lg shadow-primary-500/30 ring-1 ring-white/10 z-10 transition-transform duration-700 hover:scale-105">
-            <span className="text-white font-black text-3xl uppercase tracking-tighter">R</span>
-          </div>
+      <div className="flex min-h-[100dvh] flex-col items-center justify-center gap-6 bg-canvas">
+        <div className="flex h-14 w-14 items-center justify-center rounded-panel bg-accent text-white">
+          <RouteIcon size={26} strokeWidth={2.3} />
         </div>
-
-        {/* Indicador de carga */}
         <div className="flex flex-col items-center gap-3">
-          <h3 className="text-sm font-bold text-white tracking-widest uppercase opacity-80">Recorridos</h3>
-          <div className="flex gap-1.5">
-            <div className="w-1.5 h-1.5 bg-primary-500 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
-            <div className="w-1.5 h-1.5 bg-primary-500 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
-            <div className="w-1.5 h-1.5 bg-primary-500 rounded-full animate-bounce"></div>
-          </div>
+          <p className="text-subhead font-medium text-label-secondary">Recorridos</p>
+          {/* Indicador de estado, no de progreso: no promete un porcentaje
+              que no conocemos. */}
+          <span className="h-1 w-24 overflow-hidden rounded-full bg-fill/15">
+            <span className="block h-full w-1/3 animate-shimmer rounded-full bg-[length:200%_100%] bg-[linear-gradient(90deg,transparent,rgb(var(--c-accent)),transparent)]" />
+          </span>
         </div>
       </div>
     );
@@ -67,7 +60,7 @@ function AppContent() {
           <Route
             path="/login"
             element={
-              <Suspense fallback={<div className="h-screen w-full flex items-center justify-center bg-slate-50">Cargando...</div>}>
+              <Suspense fallback={<div className="flex min-h-[100dvh] w-full items-center justify-center bg-canvas text-subhead text-label-secondary">Cargando…</div>}>
                 {user ? <Navigate to="/dashboard" replace /> : <Login />}
               </Suspense>
             }
@@ -78,10 +71,9 @@ function AppContent() {
             path="/*"
             element={
               <Layout>
-                <Alert />
                 <Suspense fallback={
-                  <div className="flex justify-center items-center h-64">
-                    <div className="w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+                  <div className="flex h-64 items-center justify-center">
+                    <div className="h-7 w-7 animate-spin rounded-full border-[3px] border-fill/25 border-t-accent" />
                   </div>
                 }>
                   <Routes>
@@ -162,6 +154,8 @@ function AppContent() {
             }
           />
         </Routes>
+        <LoadingBar />
+        <Alert />
         <Analytics />
       </Router>
     </AppProvider>

@@ -1,71 +1,80 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
+import { Plus, Bus, Zap, Pencil, Trash2, Car, Building2, FileText, CarTaxiFront } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useAlert } from '../context/AlertContext';
-import { getVehiculos, createVehiculo, deleteVehiculo, updateVehiculo } from '../services/api';
+import {
+  createVehiculo, deleteVehiculo, updateVehiculo, getAllVehiculos, mensajeDeError, fueBien, mensajeDeRespuesta,
+} from '../services/api';
 import Modal from '../components/ui/Modal';
 import ConfirmModal from '../components/ui/ConfirmModal';
-import Alert from '../components/ui/Alert';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
+import Select from '../components/ui/Select';
 import Card from '../components/ui/Card';
+import Badge from '../components/ui/Badge';
 import Skeleton from '../components/ui/Skeleton';
-import { Settings, Trash2, Plus, Search, Truck, Zap } from 'lucide-react';
+import CardSkeleton from '../components/ui/CardSkeleton';
+import PageHeader from '../components/ui/PageHeader';
+import StatCard from '../components/ui/StatCard';
+import EmptyState from '../components/ui/EmptyState';
+import SearchField from '../components/ui/SearchField';
+import { crossFade, springSheet } from '../lib/motion';
+
+const emptyForm = {
+  tipo: 'propio', descripcion: '', placa: '', capacidad: '', costo_por_recorrido: '',
+};
+
+// Iconografía clara en lugar de emoji: un glifo del sistema se lee igual en
+// cualquier plataforma y hereda el color del tema.
+const tipoConfig = {
+  propio: { label: 'Propio', Icon: Car, tone: 'accent' },
+  empresa: { label: 'Empresa', Icon: Building2, tone: 'positive' },
+  alquilado: { label: 'Alquilado', Icon: FileText, tone: 'highlight' },
+  taxi: { label: 'Taxi', Icon: CarTaxiFront, tone: 'caution' },
+};
+
+const getTipo = (tipo) => tipoConfig[tipo] || { label: tipo || 'Otro', Icon: Car, tone: 'neutral' };
 
 const Vehiculos = () => {
-  const { vehiculos, setVehiculos, isMobile } = useApp();
+  const { vehiculos, setVehiculos } = useApp();
   const { showAlert } = useAlert();
+  const reduceMotion = useReducedMotion();
 
-  const [formData, setFormData] = useState({
-    tipo: 'propio',
-    descripcion: '',
-    placa: '',
-    capacidad: '',
-    costo_por_recorrido: '',
-  });
-
+  const [formData, setFormData] = useState(emptyForm);
   const [mostrarModal, setMostrarModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [vehiculoAEliminar, setVehiculoAEliminar] = useState(null);
   const [editMode, setEditMode] = useState(false);
   const [editId, setEditId] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
     loadVehiculos();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadVehiculos = async () => {
     setLoading(true);
     try {
-      const response = await getVehiculos();
-      if (response.data.success) {
-        setVehiculos(response.data.data);
-      }
+      setVehiculos(await getAllVehiculos());
     } catch (error) {
-      showAlert('error', 'Error al cargar vehículos: ' + error.message);
+      showAlert('error', 'No se pudieron cargar los vehículos: ' + mensajeDeError(error));
     } finally {
       setLoading(false);
     }
   };
 
-  const handleChange = (e) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value,
-    });
+  const handleChange = (event) => {
+    setFormData({ ...formData, [event.target.name]: event.target.value });
   };
 
   const resetForm = () => {
     setEditMode(false);
     setEditId(null);
-    setFormData({
-      tipo: 'propio',
-      descripcion: '',
-      placa: '',
-      capacidad: '',
-      costo_por_recorrido: '',
-    });
+    setFormData(emptyForm);
   };
 
   const handleCloseModal = () => {
@@ -73,63 +82,57 @@ const Vehiculos = () => {
     setMostrarModal(false);
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleSubmit = async (event) => {
+    event.preventDefault();
     if (!formData.descripcion || !formData.costo_por_recorrido) {
-      showAlert('error', 'Descripción y costo son requeridos');
+      showAlert('warning', 'La descripción y el costo son obligatorios');
       return;
     }
 
-    setLoading(true);
+    setSaving(true);
     const data = {
       tipo: formData.tipo,
       descripcion: formData.descripcion,
       placa: formData.placa || null,
-      capacidad: formData.capacidad ? parseInt(formData.capacidad) : null,
+      capacidad: formData.capacidad ? parseInt(formData.capacidad, 10) : null,
       costo_por_recorrido: formData.costo_por_recorrido ? parseFloat(formData.costo_por_recorrido) : 0,
     };
 
     try {
-      let response;
-      if (editMode) {
-        response = await updateVehiculo(editId, data);
-        showAlert('success', 'Vehículo actualizado exitosamente');
-      } else {
-        response = await createVehiculo(data);
-        showAlert('success', 'Vehículo creado exitosamente');
-      }
+      const response = editMode
+        ? await updateVehiculo(editId, data)
+        : await createVehiculo(data);
 
-      if (response.data.success) {
+      if (fueBien(response)) {
+        showAlert('success', editMode ? 'Vehículo actualizado' : 'Vehículo registrado');
         resetForm();
-        loadVehiculos();
         setMostrarModal(false);
+        loadVehiculos();
+      } else {
+        showAlert('error', mensajeDeRespuesta(response));
       }
     } catch (error) {
-      showAlert('error', `Error al ${editMode ? 'actualizar' : 'crear'} vehículo: ` + error.message);
+      showAlert('error', `No se pudo ${editMode ? 'actualizar' : 'registrar'}: ` + mensajeDeError(error));
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
-  };
-
-  const handleDeleteClick = (id) => {
-    setVehiculoAEliminar(id);
-    setShowDeleteModal(true);
   };
 
   const confirmDelete = async () => {
     if (!vehiculoAEliminar) return;
-
-    setLoading(true);
+    setSaving(true);
     try {
       const response = await deleteVehiculo(vehiculoAEliminar);
-      if (response.data.success) {
-        showAlert('success', 'Vehículo desactivado exitosamente');
+      if (fueBien(response)) {
+        showAlert('success', 'Vehículo desactivado');
         loadVehiculos();
+      } else {
+        showAlert('error', mensajeDeRespuesta(response));
       }
     } catch (error) {
-      showAlert('error', 'Error al eliminar: ' + error.message);
+      showAlert('error', 'No se pudo eliminar: ' + mensajeDeError(error));
     } finally {
-      setLoading(false);
+      setSaving(false);
       setShowDeleteModal(false);
       setVehiculoAEliminar(null);
     }
@@ -148,293 +151,208 @@ const Vehiculos = () => {
     setMostrarModal(true);
   };
 
-  const handleOpenCreateModal = () => {
-    resetForm();
-    setMostrarModal(true);
-  };
-
-  // Helpers de UI con soporte Neutral Glass
-  const getTipoInfo = (tipo) => {
-    const config = {
-      propio: {
-        icon: '🚗',
-        color: 'bg-blue-50 text-blue-600 border-blue-200'
-      },
-      empresa: {
-        icon: '🏢',
-        color: 'bg-emerald-50 text-emerald-600 border-emerald-200'
-      },
-      alquilado: {
-        icon: '📋',
-        color: 'bg-violet-50 text-violet-600 border-violet-200'
-      },
-      taxi: {
-        icon: '🚕',
-        color: 'bg-amber-50 text-amber-600 border-amber-200'
-      },
-      default: {
-        icon: '🚗',
-        color: 'bg-slate-50 text-slate-600 border-slate-200'
-      }
-    };
-    return config[tipo] || config.default;
-  };
-
-  const filteredVehiculos = (vehiculos || []).filter(v =>
-    v.descripcion.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (v.placa && v.placa.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+  const filteredVehiculos = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    const list = vehiculos || [];
+    if (!term) return list;
+    return list.filter((vehiculo) =>
+      vehiculo.descripcion.toLowerCase().includes(term)
+      || (vehiculo.placa && vehiculo.placa.toLowerCase().includes(term))
+    );
+  }, [vehiculos, searchTerm]);
 
   return (
-    <div className="min-h-screen bg-transparent py-4 sm:py-8 px-0 sm:px-6 lg:px-8 transition-colors duration-300">
-      <Alert />
-
-      {/* --- Page Header --- */}
-      <div className="mb-8">
-        <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Vehículos</h1>
-            <p className="text-xs font-medium text-slate-500 mt-1 uppercase tracking-wider">Control de flota y asignaciones</p>
-          </div>
-          <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
-            <div className="relative w-full sm:w-64">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Search className="h-4 w-4 text-slate-400" />
-              </div>
-              <input
-                type="text"
-                placeholder="Buscar vehículo..."
-                className="block w-full pl-10 pr-3 py-2 border border-slate-200 rounded-xl leading-5 bg-white placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 sm:text-sm transition-all shadow-sm"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-            </div>
+    <div className="pb-4">
+      <PageHeader
+        title="Vehículos"
+        subtitle="Flota disponible y costo por recorrido"
+        actions={
+          <>
+            <SearchField
+              value={searchTerm}
+              onChange={setSearchTerm}
+              placeholder="Buscar vehículo…"
+              className="w-full sm:w-60"
+            />
             <Button
-              variant="primary"
-              onClick={handleOpenCreateModal}
-              size={isMobile ? 'sm' : 'lg'}
-              className="w-full sm:w-auto shadow-sm"
+              onClick={() => { resetForm(); setMostrarModal(true); }}
+              icon={<Plus size={17} strokeWidth={2.3} />}
             >
-              <div className="flex items-center gap-2">
-                <Plus size={18} />
-                <span>Nuevo Vehículo</span>
-              </div>
+              Nuevo vehículo
             </Button>
-          </div>
-        </div>
+          </>
+        }
+      />
+
+      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <StatCard
+          label="Unidades en flota"
+          value={loading ? '—' : vehiculos.length}
+          icon={Bus}
+          tone="caution"
+          footnote="Disponibles para asignar"
+        />
+        <StatCard
+          label="Operatividad"
+          value="100%"
+          icon={Zap}
+          tone="positive"
+          footnote="Todas las unidades en servicio"
+        />
       </div>
 
-      {/* --- Content Section --- */}
-      <div className="w-full mx-auto">
-        {/* Stats Grid */}
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-2 mb-8">
-          <Card variant="base" className="p-6 border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-1">Total Flota</p>
-                <h3 className="text-3xl font-black text-slate-900 tracking-tighter">{vehiculos.length}</h3>
-              </div>
-              <div className="p-2 bg-amber-50 rounded-lg text-amber-600">
-                <Truck size={20} strokeWidth={2.5} />
-              </div>
-            </div>
-            <div className="mt-4 flex items-center gap-2 text-[11px] font-bold text-slate-400">
-              <span className="text-slate-600">Unidades</span>
-              <span>disponibles</span>
-            </div>
-          </Card>
-
-          <Card variant="base" className="p-6 border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-1">Operatividad</p>
-                <h3 className="text-3xl font-black text-emerald-600 tracking-tighter uppercase">100%</h3>
-              </div>
-              <div className="p-2 bg-emerald-50 rounded-lg text-emerald-600">
-                <Zap size={20} strokeWidth={2.5} />
-              </div>
-            </div>
-            <div className="mt-4 flex items-center gap-2 text-[11px] font-bold text-slate-400">
-              <span className="text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">En servicio</span>
-            </div>
-          </Card>
+      {loading ? (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {[...Array(8)].map((_, index) => <CardSkeleton key={index} lineas={3} />)}
         </div>
-
-
-        {loading ? (
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {[...Array(8)].map((_, i) => (
-              <Skeleton key={i} variant="card" className="h-[200px]" />
-            ))}
-          </div>
-        ) : filteredVehiculos.length === 0 ? (
-          <div className="text-center py-20 bg-white rounded-3xl border border-slate-200 border-dashed">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-slate-50 mb-4">
-              <Truck size={32} className="text-slate-300" />
-            </div>
-            <h3 className="text-lg font-bold text-slate-900 mb-1">Sin vehículos</h3>
-            <p className="text-slate-500 text-sm">Registra tu primer transporte para comenzar.</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      ) : filteredVehiculos.length === 0 ? (
+        <EmptyState
+          icon={Bus}
+          title={searchTerm ? 'Sin coincidencias' : 'Todavía no hay vehículos'}
+          message={
+            searchTerm
+              ? 'Ningún vehículo coincide con esa búsqueda.'
+              : 'Registra el primer transporte para poder asignarlo a un recorrido.'
+          }
+          action={
+            !searchTerm && (
+              <Button onClick={() => { resetForm(); setMostrarModal(true); }} icon={<Plus size={17} strokeWidth={2.3} />}>
+                Nuevo vehículo
+              </Button>
+            )
+          }
+        />
+      ) : (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <AnimatePresence initial={false}>
             {filteredVehiculos.map((vehiculo) => {
-              const styleInfo = getTipoInfo(vehiculo.tipo);
+              const { label, Icon, tone } = getTipo(vehiculo.tipo);
               return (
-                <Card
+                <motion.div
                   key={vehiculo.id}
-                  variant="base"
-                  padding="p-0"
-                  className="group relative overflow-visible hover:shadow-lg transition-all duration-300 border-slate-200 flex flex-col"
+                  layout
+                  initial={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.97 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.97 }}
+                  transition={reduceMotion ? crossFade : springSheet}
                 >
-                  <div className="p-6 flex-1">
-                    <div className="flex items-start justify-between mb-4">
-                      <div className="w-12 h-12 bg-slate-50 rounded-xl flex items-center justify-center text-xl shadow-sm border border-slate-100">
-                        {styleInfo.icon}
+                  <Card padding="p-0" className="flex h-full flex-col overflow-hidden">
+                    <div className="flex-1 p-5">
+                      <div className="mb-4 flex items-start justify-between gap-3">
+                        <span className="flex h-11 w-11 items-center justify-center rounded-field bg-fill/10 text-label-secondary">
+                          <Icon size={20} strokeWidth={1.9} />
+                        </span>
+                        <Badge tone={tone}>{label}</Badge>
                       </div>
-                      <span className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full border ${styleInfo.color}`}>
-                        {vehiculo.tipo}
-                      </span>
+
+                      <h3 className="truncate text-headline font-semibold text-label" title={vehiculo.descripcion}>
+                        {vehiculo.descripcion}
+                      </h3>
+                      <p className="tabular mt-0.5 text-footnote text-label-tertiary">
+                        {vehiculo.placa || 'Sin placa'}
+                      </p>
+
+                      <dl className="mt-4 grid grid-cols-2 gap-3 border-t border-separator/50 pt-4">
+                        <div>
+                          <dt className="text-caption text-label-tertiary">Capacidad</dt>
+                          <dd className="tabular mt-0.5 text-subhead font-medium text-label">
+                            {vehiculo.capacidad || 0} pasajeros
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="text-caption text-label-tertiary">Costo por recorrido</dt>
+                          <dd className="tabular mt-0.5 text-subhead font-semibold text-positive">
+                            ${parseFloat(vehiculo.costo_por_recorrido || 0).toFixed(2)}
+                          </dd>
+                        </div>
+                      </dl>
                     </div>
 
-                    <h3 className="text-lg font-bold text-slate-900 tracking-tight truncate line-clamp-1 mb-1" title={vehiculo.descripcion}>
-                      {vehiculo.descripcion}
-                    </h3>
-                    <p className="text-xs font-medium text-slate-400 uppercase tracking-widest mb-4">
-                      {vehiculo.placa || 'SIN PLACA'}
-                    </p>
-
-                    <div className="pt-4 border-t border-slate-50 grid grid-cols-2 gap-2">
-                      <div>
-                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Capacidad</p>
-                        <p className="text-sm font-bold text-slate-700">{vehiculo.capacidad || '0'} Pas.</p>
-                      </div>
-                      <div>
-                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Costo</p>
-                        <p className="text-sm font-bold text-emerald-600">${parseFloat(vehiculo.costo_por_recorrido || 0).toFixed(2)}</p>
-                      </div>
+                    <div className="flex items-center gap-2 border-t border-separator/60 bg-surface-secondary px-4 py-3">
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        className="flex-1"
+                        onClick={() => handleEdit(vehiculo)}
+                        icon={<Pencil size={14} strokeWidth={2.1} />}
+                      >
+                        Editar
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        aria-label={`Eliminar ${vehiculo.descripcion}`}
+                        className="px-2.5 text-label-secondary hover:bg-critical/14 hover:text-critical"
+                        onClick={() => { setVehiculoAEliminar(vehiculo.id); setShowDeleteModal(true); }}
+                      >
+                        <Trash2 size={16} strokeWidth={2} />
+                      </Button>
                     </div>
-                  </div>
-
-                  <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-3">
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      className="flex-1 text-xs justify-center gap-2 hover:bg-white hover:border-indigo-200 hover:text-indigo-600 shadow-sm"
-                      onClick={() => handleEdit(vehiculo)}
-                    >
-                      <div className="flex items-center gap-2">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" /></svg>
-                        <span>Editar</span>
-                      </div>
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-slate-400 hover:text-red-600 hover:bg-red-50 hover:border-red-100 border border-transparent px-3"
-                      onClick={() => handleDeleteClick(vehiculo.id)}
-                    >
-                      <span className="sr-only">Eliminar</span>
-                      <Trash2 size={16} />
-                    </Button>
-                  </div>
-                </Card>
+                  </Card>
+                </motion.div>
               );
             })}
-          </div>
-        )}
-      </div>
+          </AnimatePresence>
+        </div>
+      )}
 
-      {/* --- Modals --- */}
       <ConfirmModal
         isOpen={showDeleteModal}
         onClose={() => setShowDeleteModal(false)}
         onConfirm={confirmDelete}
-        title="Desactivar Vehículo"
-        message="¿Estás seguro de que quieres desactivar este vehículo? Esta acción podría afectar recorridos históricos."
-        confirmText="Sí, desactivar"
-        cancelText="Cancelar"
+        loading={saving}
+        title="Desactivar vehículo"
+        message="El vehículo dejará de estar disponible para nuevos recorridos. Los recorridos históricos podrían verse afectados."
+        confirmText="Desactivar"
         type="danger"
       />
 
       <Modal
         isOpen={mostrarModal}
         onClose={handleCloseModal}
-        title={editMode ? 'Editar Vehículo' : 'Nuevo Vehículo'}
+        title={editMode ? 'Editar vehículo' : 'Nuevo vehículo'}
         size="max-w-xl"
+        footer={
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button variant="secondary" onClick={handleCloseModal}>Cancelar</Button>
+            <Button type="submit" form="form-vehiculo" loading={saving}>
+              {editMode ? 'Guardar cambios' : 'Registrar'}
+            </Button>
+          </div>
+        }
       >
-        <div className="p-0 bg-transparent">
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="grid grid-cols-2 gap-6">
-              <div>
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2 pl-1">Tipo de Vehículo</label>
-                <select
-                  name="tipo"
-                  value={formData.tipo}
-                  onChange={handleChange}
-                  required
-                  className="px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-primary-500/50 focus:border-slate-300 block w-full transition-all duration-300 bg-white text-slate-900 outline-none"
-                  disabled={loading}
-                >
-                  <option value="propio">🚗 Propio</option>
-                  <option value="empresa">🏢 Empresa</option>
-                  <option value="alquilado">📋 Alquilado</option>
-                  <option value="taxi">🚕 Taxi</option>
-                </select>
-              </div>
-              <Input
-                label="Placa / Chasis"
-                name="placa"
-                value={formData.placa}
-                onChange={handleChange}
-                placeholder="ABC-1234"
-                className="uppercase"
-                disabled={loading}
-              />
-            </div>
-
+        <form id="form-vehiculo" onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Select label="Tipo" name="tipo" value={formData.tipo} onChange={handleChange} required disabled={saving}>
+              <option value="propio">Propio</option>
+              <option value="empresa">Empresa</option>
+              <option value="alquilado">Alquilado</option>
+              <option value="taxi">Taxi</option>
+            </Select>
             <Input
-              label="Descripción o Modelo"
-              name="descripcion"
-              value={formData.descripcion}
-              onChange={handleChange}
-              placeholder="Ej: Toyota Hilux Blanca 2023"
-              required
-              disabled={loading}
+              label="Placa" name="placa" value={formData.placa} onChange={handleChange}
+              placeholder="ABC-1234" className="uppercase" disabled={saving}
             />
+          </div>
 
-            <div className="grid grid-cols-2 gap-6">
-              <Input
-                label="Capacidad (Personas)"
-                type="number"
-                name="capacidad"
-                value={formData.capacidad}
-                onChange={handleChange}
-                placeholder="4"
-                min="1"
-                disabled={loading}
-              />
-              <Input
-                label="Costo por Recorrido ($)"
-                type="number"
-                step="0.01"
-                name="costo_por_recorrido"
-                value={formData.costo_por_recorrido}
-                onChange={handleChange}
-                placeholder="0.00"
-                required
-                min="0"
-                disabled={loading}
-              />
-            </div>
+          <Input
+            label="Descripción o modelo" name="descripcion" value={formData.descripcion}
+            onChange={handleChange} placeholder="Toyota Hilux blanca 2023" required disabled={saving}
+          />
 
-            <div className="mt-10 pt-8 border-t border-slate-200 flex flex-col-reverse sm:flex-row sm:justify-end gap-4">
-              <Button type="button" onClick={handleCloseModal} variant="secondary" className="w-full sm:w-auto">Cancelar</Button>
-              <Button type="submit" variant="primary" loading={loading} className="w-full sm:w-auto">
-                {editMode ? 'Guardar Cambios' : 'Registrar Vehículo'}
-              </Button>
-            </div>
-          </form>
-        </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Input
+              label="Capacidad" type="number" name="capacidad" value={formData.capacidad}
+              onChange={handleChange} placeholder="4" min="1" disabled={saving}
+              hint="Número de pasajeros"
+            />
+            <Input
+              label="Costo por recorrido" type="number" step="0.01" name="costo_por_recorrido"
+              value={formData.costo_por_recorrido} onChange={handleChange}
+              placeholder="0.00" required min="0" disabled={saving} hint="En dólares"
+            />
+          </div>
+        </form>
       </Modal>
     </div>
   );

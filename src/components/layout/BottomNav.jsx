@@ -1,63 +1,88 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Home, MapPin, Users, Car, User, Shield } from 'lucide-react';
+import { motion, useReducedMotion } from 'motion/react';
+import { LayoutGrid, Route, GraduationCap, Bus, ShieldCheck, CircleUser } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { springSnappy, haptics } from '../../lib/motion';
+
+// Los nombres describen lo que hay dentro, no un paraguas vago: "Resumen"
+// dice más que "Inicio" sobre qué se va a encontrar al llegar.
+const baseNavItems = [
+    { icon: LayoutGrid, label: 'Resumen', path: '/dashboard' },
+    { icon: Route, label: 'Recorridos', path: '/recorridos' },
+    { icon: GraduationCap, label: 'Estudiantes', path: '/ninos' },
+    { icon: Bus, label: 'Vehículos', path: '/vehiculos' },
+];
 
 const BottomNav = () => {
     const location = useLocation();
     const { isAdmin } = useAuth();
+    const reduceMotion = useReducedMotion();
 
-    const baseNavItems = [
-        { icon: Home, label: 'Inicio', path: '/dashboard' },
-        { icon: MapPin, label: 'Rutas', path: '/recorridos' },
-        { icon: Users, label: 'Niños', path: '/ninos' },
-        { icon: Car, label: 'Vehículos', path: '/vehiculos' },
-    ];
-
-    // Agregar enlace de Usuarios solo para admins, antes de Perfil
     const navItems = isAdmin
-        ? [...baseNavItems, { icon: Shield, label: 'Usuarios', path: '/users' }, { icon: User, label: 'Perfil', path: '/perfil' }]
-        : [...baseNavItems, { icon: User, label: 'Perfil', path: '/perfil' }];
+        ? [...baseNavItems, { icon: ShieldCheck, label: 'Usuarios', path: '/users' }, { icon: CircleUser, label: 'Perfil', path: '/perfil' }]
+        : [...baseNavItems, { icon: CircleUser, label: 'Perfil', path: '/perfil' }];
 
     return (
-        <div className="fixed bottom-6 left-4 right-4 z-50 lg:hidden safe-area-bottom pointer-events-none">
-            {/* iOS 26 Style: Floating Glassmorphism Island */}
-            <div className="bg-white/80 backdrop-blur-2xl border border-white/40 shadow-2xl shadow-slate-300/50 rounded-[2.5rem] p-1.5 flex items-center justify-between mx-auto max-w-sm ring-1 ring-black/5 pointer-events-auto transition-all duration-300 transform hover:scale-[1.02]">
-                {navItems.map((item) => {
-                    const Icon = item.icon;
-                    const isActive = location.pathname === item.path || (item.path === '/dashboard' && location.pathname === '/');
+        <nav
+            aria-label="Navegación principal"
+            className="fixed inset-x-0 bottom-0 z-40 lg:hidden"
+        >
+            {/* Capa translúcida: el contenido se desplaza por debajo en lugar de
+                quedar recortado por una franja opaca. */}
+            <div className="material-chrome material-edge-top pb-safe">
+                <ul className="mx-auto flex max-w-lg items-stretch justify-between px-1 pt-1">
+                    {navItems.map((item) => {
+                        const Icon = item.icon;
+                        const isActive = location.pathname === item.path
+                            || (item.path === '/dashboard' && location.pathname === '/');
 
-                    return (
-                        <Link
-                            key={item.path}
-                            to={item.path}
-                            className={`relative group flex flex-col items-center justify-center w-full h-14 rounded-[2rem] transition-all duration-300 ease-out ${isActive ? 'text-primary-600' : 'text-slate-400 hover:text-slate-600'
-                                }`}
-                        >
-                            {/* Active Background Pill */}
-                            {isActive && (
-                                <div className="absolute inset-0 bg-white shadow-sm rounded-[2rem] scale-95 border border-slate-100/50 animate-in fade-in zoom-in duration-300 origin-center" />
-                            )}
+                        return (
+                            <li key={item.path} className="flex-1">
+                                <Link
+                                    to={item.path}
+                                    onClick={() => haptics.tick()}
+                                    aria-current={isActive ? 'page' : undefined}
+                                    className="tappable relative flex flex-col items-center gap-0.5 rounded-control px-1 pb-1.5 pt-1.5"
+                                >
+                                    {isActive && (
+                                        // El indicador se desliza entre pestañas con un spring
+                                        // compartido: la selección se mueve, no salta.
+                                        <motion.span
+                                            layoutId="tab-indicator"
+                                            transition={reduceMotion ? { duration: 0.12 } : springSnappy}
+                                            className="absolute inset-x-1 inset-y-0 rounded-control bg-accent/12"
+                                        />
+                                    )}
 
-                            {/* Icon & Label Container */}
-                            <div className="relative z-10 flex flex-col items-center gap-0.5 transition-transform duration-200 active:scale-90">
-                                <Icon
-                                    size={24}
-                                    strokeWidth={isActive ? 2.5 : 2}
-                                    className={`transition-all duration-300 ${isActive ? '-translate-y-0.5 drop-shadow-sm' : ''}`}
-                                />
-
-                                {isActive && (
-                                    <span className="text-[9px] font-bold tracking-tight animate-in slide-in-from-bottom-1 fade-in duration-300">
-                                        {item.label}
-                                    </span>
-                                )}
-                            </div>
-                        </Link>
-                    );
-                })}
+                                    <motion.span
+                                        className="relative z-10 flex flex-col items-center gap-0.5"
+                                        // El hundido responde a la pulsación, no a soltar.
+                                        whileTap={reduceMotion ? { opacity: 0.6 } : { scale: 0.88 }}
+                                        transition={springSnappy}
+                                    >
+                                        <Icon
+                                            size={22}
+                                            strokeWidth={isActive ? 2.3 : 1.9}
+                                            className={isActive ? 'text-accent' : 'text-label-tertiary'}
+                                        />
+                                        {/* La etiqueta está siempre visible: tener que adivinar
+                                            qué hace un icono es peor que un poco menos de aire. */}
+                                        <span
+                                            className={`text-[0.625rem] leading-tight tracking-[0.004em] ${
+                                                isActive ? 'font-semibold text-accent' : 'font-medium text-label-tertiary'
+                                            }`}
+                                        >
+                                            {item.label}
+                                        </span>
+                                    </motion.span>
+                                </Link>
+                            </li>
+                        );
+                    })}
+                </ul>
             </div>
-        </div>
+        </nav>
     );
 };
 

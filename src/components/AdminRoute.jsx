@@ -1,35 +1,32 @@
 import React from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useNavigate } from 'react-router-dom';
+import { ShieldAlert } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { RouteSpinner } from './ProtectedRoute';
+import Button from './ui/Button';
 
 const AdminRoute = ({ children }) => {
   const { isAuthenticated, isAdmin, loading } = useAuth();
+  const navigate = useNavigate();
 
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
-      </div>
-    );
-  }
-
-  if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
-  }
+  if (loading) return <RouteSpinner />;
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
 
   if (!isAdmin) {
+    // Nadie queda atrapado: se explica qué pasa y se ofrece una salida clara.
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen p-4">
-        <div className="bg-red-100 border border-red-400 text-red-700 px-6 py-4 rounded-lg max-w-md text-center">
-          <h2 className="font-bold text-lg mb-2">🚫 Acceso Denegado</h2>
-          <p className="mb-4">No tienes permisos de administrador para acceder a esta página.</p>
-          <button 
-            onClick={() => window.history.back()}
-            className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition-colors"
-          >
-            Volver al Dashboard
-          </button>
-        </div>
+      <div className="flex min-h-[60vh] flex-col items-center justify-center px-4 text-center">
+        <span className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-caution/14 text-caution">
+          <ShieldAlert size={26} strokeWidth={1.9} />
+        </span>
+        <h1 className="text-title3 font-semibold text-label">Sección restringida</h1>
+        <p className="mt-1.5 max-w-sm text-subhead text-label-secondary">
+          Esta página es solo para administradores. Si crees que deberías tener acceso,
+          pídeselo a quien administre el sistema.
+        </p>
+        <Button className="mt-6" onClick={() => navigate('/dashboard')}>
+          Ir al resumen
+        </Button>
       </div>
     );
   }

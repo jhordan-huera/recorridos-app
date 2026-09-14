@@ -1,53 +1,116 @@
-// components/ui/Button.jsx
 import React from 'react';
+import { motion, useReducedMotion } from 'motion/react';
+import { springSnappy } from '../../lib/motion';
 
-const Button = ({
+/**
+ * Variantes de relleno. El color va sobre una capa sólida — nunca sobre el
+ * primer plano de una superficie translúcida, donde se lavaría.
+ */
+const variants = {
+  primary:
+    'bg-accent text-white border-transparent shadow-level-1 hover:brightness-110',
+  // Relleno gris translúcido: se distingue sobre blanco y sobre el fondo de
+  // la página sin depender de un borde de 1px que se pierde.
+  secondary:
+    'bg-fill/12 text-label border-transparent hover:bg-fill/20',
+  // Solo para acciones terciarias dentro de una superficie ya delimitada.
+  ghost:
+    'bg-transparent text-label-secondary border-transparent hover:bg-fill/14 hover:text-label',
+  tinted:
+    'bg-accent/12 text-accent border-transparent hover:bg-accent/20',
+  danger:
+    'bg-critical/12 text-critical border-transparent hover:bg-critical/20',
+  destructive:
+    'bg-critical text-white border-transparent shadow-level-1 hover:brightness-110',
+  success:
+    'bg-positive/12 text-positive border-transparent hover:bg-positive/20',
+  warning:
+    'bg-caution/12 text-caution border-transparent hover:bg-caution/20',
+  info:
+    'bg-info/12 text-info border-transparent hover:bg-info/20',
+};
+
+const sizes = {
+  sm: 'h-8 px-3 text-footnote gap-1.5 rounded-field',
+  md: 'h-10 px-4 text-subhead gap-2 rounded-control',
+  lg: 'h-12 px-5 text-body gap-2 rounded-control',
+};
+
+const Spinner = () => (
+  <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+    <path
+      className="opacity-90"
+      fill="currentColor"
+      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+    />
+  </svg>
+);
+
+/**
+ * Botón.
+ *
+ * El feedback vive en la PULSACIÓN, no en el release: `whileTap` de Motion se
+ * dispara en `pointerdown`, así que el botón se hunde en el instante en que se
+ * toca. Esperar al `click` para mostrar algo se siente muerto.
+ *
+ * Motion cancela el estado de pulsado si el dedo se aleja del control y lo
+ * recupera si vuelve, que es justo el comportamiento de cancelar-arrastrando.
+ */
+const Button = React.forwardRef(({
   children,
   variant = 'primary',
   size = 'md',
   loading = false,
+  isLoading = false,          // alias tolerado: ambos nombres estaban en uso
+  loadingText = 'Cargando',
   disabled = false,
   className = '',
   icon = null,
+  iconTrailing = null,
+  type = 'button',
   ...props
-}) => {
-  const baseClasses = 'relative inline-flex items-center justify-center font-semibold transition-all duration-200 border rounded-lg outline-none active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none disabled:grayscale group';
+}, ref) => {
+  const reduceMotion = useReducedMotion();
+  const busy = loading || isLoading;
+  const isDisabled = disabled || busy;
 
-  const variants = {
-    primary: 'bg-primary-600 text-white border-primary-500/50 hover:bg-primary-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.1),0_1px_2px_rgba(0,0,0,0.4)]',
-    secondary: 'bg-white/5 text-white border-white/10 hover:bg-white/10 hover:border-white/20 shadow-ent-sm',
-    danger: 'bg-red-500/10 text-red-500 border-red-500/20 hover:bg-red-500/20 hover:border-red-500/40',
-    success: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20 hover:bg-emerald-500/20 hover:border-emerald-500/40',
-    warning: 'bg-amber-500/10 text-amber-500 border-amber-500/20 hover:bg-amber-500/20 hover:border-amber-500/40',
-    info: 'bg-blue-500/10 text-blue-500 border-blue-500/20 hover:bg-blue-500/20 hover:border-blue-500/40'
-  };
+  const base =
+    'tappable relative inline-flex items-center justify-center border font-medium ' +
+    'transition-colors duration-[var(--t-fast)] outline-none ' +
+    'disabled:opacity-40 disabled:pointer-events-none select-none';
 
-  const sizes = {
-    sm: 'h-8 px-3 text-xs tracking-tight',
-    md: 'h-10 px-4 text-sm tracking-tight',
-    lg: 'h-12 px-6 text-base tracking-tight'
-  };
-
-  const classes = `${baseClasses} ${variants[variant]} ${sizes[size]} ${className}`;
+  // Con movimiento reducido no se escala: el mismo mensaje se da con un
+  // cambio de opacidad, que no desplaza nada en pantalla.
+  const pressFeedback = reduceMotion ? { opacity: 0.6 } : { scale: 0.96 };
 
   return (
-    <button className={classes} disabled={disabled || loading} {...props}>
-      {loading ? (
-        <span className="flex items-center justify-center">
-          <svg className="animate-spin -ml-1 mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-          </svg>
-          <span className="opacity-90 text-[11px] font-bold uppercase tracking-widest">Cargando...</span>
-        </span>
+    <motion.button
+      ref={ref}
+      type={type}
+      disabled={isDisabled}
+      aria-busy={busy || undefined}
+      whileTap={isDisabled ? undefined : pressFeedback}
+      transition={springSnappy}
+      className={`${base} ${variants[variant] || variants.primary} ${sizes[size] || sizes.md} ${className}`}
+      {...props}
+    >
+      {busy ? (
+        <>
+          <Spinner />
+          <span>{loadingText}</span>
+        </>
       ) : (
-        <span className="flex items-center justify-center">
-          {icon && <span className="mr-2 opacity-70 group-hover:opacity-100 transition-opacity">{icon}</span>}
+        <>
+          {icon}
           {children}
-        </span>
+          {iconTrailing}
+        </>
       )}
-    </button>
+    </motion.button>
   );
-};
+});
+
+Button.displayName = 'Button';
 
 export default Button;

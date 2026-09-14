@@ -1,42 +1,109 @@
-import React from 'react';
+import React, { useId, useState } from 'react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
+import { crossFade, springSnappy } from '../../lib/motion';
 
-const Input = ({
+/**
+ * Campo de texto.
+ *
+ * La validación se muestra EN LÍNEA y en cuanto hay algo que decir, no al
+ * enviar el formulario: avisar antes del problema evita que alguien complete
+ * diez campos para descubrir al final que el segundo estaba mal.
+ *
+ * El mensaje de error aparece con un fundido corto, no con un desplazamiento:
+ * un error que empuja el layout hacia abajo mueve justo lo que la persona
+ * estaba mirando.
+ */
+const Input = React.forwardRef(({
   label,
   error,
+  hint,
+  icon: Icon = null,
+  trailing = null,
   className = '',
+  containerClassName = '',
   id,
+  required,
   ...props
-}) => {
+}, ref) => {
+  const generatedId = useId();
+  const inputId = id || generatedId;
+  const describedBy = error ? `${inputId}-error` : hint ? `${inputId}-hint` : undefined;
+  const reduceMotion = useReducedMotion();
+  const [focused, setFocused] = useState(false);
+
   return (
-    <div className="flex flex-col space-y-1.5 w-full">
+    <div className={`flex w-full flex-col gap-1.5 ${containerClassName}`}>
       {label && (
-        <label
-          htmlFor={id}
-          className="text-xs font-semibold text-slate-500 tracking-tight block pl-0.5"
-        >
+        <label htmlFor={inputId} className="px-0.5 text-footnote font-medium text-label-secondary">
           {label}
+          {required && <span className="ml-0.5 text-critical" aria-hidden="true">*</span>}
         </label>
       )}
-      <div className="relative group/input">
+
+      <div className="relative">
+        {Icon && (
+          <span
+            className={`pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 transition-colors duration-[var(--t-fast)] ${
+              focused ? 'text-accent' : 'text-label-tertiary'
+            }`}
+          >
+            {/* Acepta tanto un componente (icon={Mail}) como un elemento ya creado. */}
+            {React.isValidElement(Icon) ? Icon : <Icon size={17} strokeWidth={1.9} />}
+          </span>
+        )}
+
         <input
-          id={id}
+          ref={ref}
+          id={inputId}
+          required={required}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={describedBy}
+          onFocus={(event) => { setFocused(true); props.onFocus?.(event); }}
+          onBlur={(event) => { setFocused(false); props.onBlur?.(event); }}
           className={`
-            w-full transition-all duration-200 bg-white border border-slate-200
-            rounded-lg h-10 px-3 text-slate-900 text-sm outline-none
-            placeholder:text-slate-400
-            focus:border-primary-500 focus:ring-4 focus:ring-primary-500/10
-            disabled:opacity-50 disabled:cursor-not-allowed disabled:grayscale
-            ${error ? 'border-red-500/50 focus:border-red-500 focus:ring-red-500/10' : ''}
+            h-11 w-full rounded-control border bg-surface px-3 text-body text-label
+            outline-none transition-[border-color,box-shadow,background-color] duration-[var(--t-fast)]
+            placeholder:text-label-quaternary
+            disabled:cursor-not-allowed disabled:opacity-40
+            ${Icon ? 'pl-10' : ''}
+            ${trailing ? 'pr-11' : ''}
+            ${error
+              ? 'border-critical focus:border-critical focus:shadow-[0_0_0_4px_rgb(var(--c-red)/0.18)]'
+              : 'border-separator/70 focus:border-accent focus:shadow-focus'}
             ${className}
           `}
           {...props}
         />
+
+        {trailing && (
+          <span className="absolute inset-y-0 right-0 flex items-center pr-2">{trailing}</span>
+        )}
       </div>
-      {error && (
-        <p className="text-red-400 text-xs font-medium pl-0.5 animate-fade-in">{error}</p>
-      )}
+
+      <AnimatePresence initial={false} mode="wait">
+        {error ? (
+          <motion.p
+            key="error"
+            id={`${inputId}-error`}
+            role="alert"
+            initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -3 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -3 }}
+            transition={reduceMotion ? crossFade : springSnappy}
+            className="px-0.5 text-footnote font-medium text-critical"
+          >
+            {error}
+          </motion.p>
+        ) : hint ? (
+          <p key="hint" id={`${inputId}-hint`} className="px-0.5 text-footnote text-label-tertiary">
+            {hint}
+          </p>
+        ) : null}
+      </AnimatePresence>
     </div>
   );
-};
+});
+
+Input.displayName = 'Input';
 
 export default Input;

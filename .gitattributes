@@ -1,0 +1,4 @@
+# Normaliza los finales de línea: el repo es LF.
+# Sin esto, un editor en modo CRLF reescribe ficheros enteros y el diff se
+# vuelve ilegible (pasó con vercel.json, vite.config.js y cinco más).
+* text=auto eol=lf

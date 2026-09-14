@@ -3,10 +3,17 @@
 
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>App Recorridos</title>
+  <!-- Sin `maximum-scale`/`user-scalable=no`: bloquear el zoom impide ampliar
+       a quien lo necesita. La layout escala con el texto en su lugar. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <!-- El color de la barra del navegador acompaña al tema; AppContext lo
+       actualiza al cambiar entre claro y oscuro. -->
+  <meta name="theme-color" content="#f2f2f7" />
+  <meta name="color-scheme" content="light dark" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <title>Recorridos</title>
 
-  <!-- Favicon & App Icons -->
   <link rel="icon" type="image/webp" href="/pwa-192x192.webp" />
   <link rel="apple-touch-icon" href="/pwa-192x192.webp" />
 </head>
