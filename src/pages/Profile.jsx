@@ -1,345 +1,346 @@
 import React, { useState, useEffect } from 'react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
+import {
+  CircleUser, Mail, Shield, KeyRound, ChevronRight, ChevronLeft,
+  Bell, Sun, HelpCircle, LogOut, Lock,
+} from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useAlert } from '../context/AlertContext';
-import { updateUser, getCurrentUser } from '../services/api';
+import { useApp } from '../context/AppContext';
+import { getCurrentUser } from '../services/api';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
-import {
-  User,
-  Mail,
-  Shield,
-  Key,
-  Camera,
-  Save,
-  ArrowLeft,
-  ChevronRight,
-  Bell,
-  Smartphone,
-  HelpCircle,
-  LogOut,
-  Lock
-} from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
-import { useApp } from '../context/AppContext';
+import ThemeToggle from '../components/ui/ThemeToggle';
+import ConfirmModal from '../components/ui/ConfirmModal';
+import { crossFade, springSheet, springSnappy } from '../lib/motion';
 
-const Profile = () => {
-  const { user, logout } = useAuth();
-  const { showAlert } = useAlert();
-  const navigate = useNavigate();
-  const { isMobile } = useApp();
-  const [loading, setLoading] = useState(false);
-  const [activeSection, setActiveSection] = useState('main'); // 'main', 'personal', 'security'
+const extractName = (u) => {
+  if (!u) return null;
+  return u.nombre || u.full_name || u.user_metadata?.full_name || u.user_metadata?.name;
+};
 
-  // --- LÓGICA DE NOMBRE ---
-  const extractName = (u) => {
-    if (!u) return null;
-    return u.nombre ||
-      u.full_name ||
-      u.user_metadata?.full_name ||
-      u.user_metadata?.name;
+/**
+ * Fila de ajuste.
+ *
+ * El control está junto a lo que afecta y la flecha indica que hay un nivel
+ * más abajo. Se hunde en la pulsación, no al soltar.
+ */
+const SettingRow = ({ icon: Icon, label, sublabel, onClick, trailing, danger = false, tone = 'accent' }) => {
+  const reduceMotion = useReducedMotion();
+  const tones = {
+    accent: 'bg-accent/12 text-accent',
+    brand: 'bg-brand/14 text-brand',
+    info: 'bg-info/14 text-info',
+    caution: 'bg-caution/16 text-caution',
+    highlight: 'bg-highlight/14 text-highlight',
+    positive: 'bg-positive/14 text-positive',
+    neutral: 'bg-fill/12 text-label-secondary',
   };
 
-  // Estado del formulario
+  const content = (
+    <>
+      <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-field ${danger ? 'bg-critical/12 text-critical' : tones[tone]}`}>
+        <Icon size={17} strokeWidth={2} />
+      </span>
+      <span className="min-w-0 flex-1 text-left">
+        <span className={`block text-subhead font-medium ${danger ? 'text-critical' : 'text-label'}`}>
+          {label}
+        </span>
+        {sublabel && <span className="mt-0.5 block text-footnote text-label-tertiary">{sublabel}</span>}
+      </span>
+      {trailing ?? (onClick && <ChevronRight size={17} strokeWidth={2.2} className="shrink-0 text-label-quaternary" />)}
+    </>
+  );
+
+  if (!onClick) {
+    return <div className="flex items-center gap-3 px-4 py-3">{content}</div>;
+  }
+
+  return (
+    <motion.button
+      type="button"
+      onClick={onClick}
+      whileTap={reduceMotion ? { opacity: 0.6 } : { backgroundColor: 'rgb(var(--c-fill) / 0.12)' }}
+      transition={springSnappy}
+      className="tappable flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-fill/8"
+    >
+      {content}
+    </motion.button>
+  );
+};
+
+const SettingGroup = ({ title, children }) => (
+  <section className="mb-5">
+    {title && (
+      <h2 className="mb-2 px-4 text-footnote font-medium text-label-secondary">{title}</h2>
+    )}
+    <Card padding="p-0" className="divide-y divide-separator/50 overflow-hidden">
+      {children}
+    </Card>
+  </section>
+);
+
+const Profile = () => {
+  // updateProfile y changePassword salen del contexto: PUT /users/:id es
+  // solo para administradores, así que un usuario normal no puede editarse
+  // por esa vía. La auto-edición va por PUT /auth/me.
+  const { user, logout, updateProfile, changePassword } = useAuth();
+  const { showAlert } = useAlert();
+  const { resolvedTheme } = useApp();
+  const reduceMotion = useReducedMotion();
+
+  const [loading, setLoading] = useState(false);
+  const [section, setSection] = useState('main');
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+
   const [formData, setFormData] = useState({
-    nombre: '',
-    email: '',
-    password: '',
-    confirmPassword: ''
+    nombre: '', email: '', passwordActual: '', password: '', confirmPassword: '',
   });
-
   const [displayName, setDisplayName] = useState('');
-  const [initial, setInitial] = useState('');
 
-  // Cargar datos del usuario al montar
   useEffect(() => {
     const fetchProfile = async () => {
       try {
         setLoading(true);
         const response = await getCurrentUser();
-        const userData = response.data.user || response.data;
+        const userData = response.data.data;
         const name = extractName(userData) || '';
-
-        setFormData(prev => ({
-          ...prev,
-          nombre: name,
-          email: userData.email || ''
-        }));
+        setFormData((prev) => ({ ...prev, nombre: name, email: userData.email || '' }));
         setDisplayName(name);
-        setInitial(name ? name.charAt(0).toUpperCase() : 'U');
-
-      } catch (error) {
-        console.error('Error fetching profile:', error);
+      } catch {
+        // Sin conexión con el servidor caemos a lo que ya tenemos en sesión.
         if (user) {
           const name = extractName(user) || '';
-          setFormData(prev => ({
-            ...prev,
-            nombre: name,
-            email: user.email || ''
-          }));
+          setFormData((prev) => ({ ...prev, nombre: name, email: user.email || '' }));
           setDisplayName(name);
-          setInitial(name ? name.charAt(0).toUpperCase() : 'U');
         }
       } finally {
         setLoading(false);
       }
     };
-
     fetchProfile();
   }, [user]);
 
-  const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+  const initial = displayName ? displayName.charAt(0).toUpperCase() : 'U';
+
+  const handleChange = (event) => setFormData({ ...formData, [event.target.name]: event.target.value });
+
+  const handleSubmitPerfil = async (event) => {
+    event.preventDefault();
+    setLoading(true);
+    const resultado = await updateProfile({ nombre: formData.nombre, email: formData.email });
+    setLoading(false);
+
+    if (resultado.success) {
+      showAlert('success', 'Perfil actualizado');
+      setDisplayName(formData.nombre);
+      setSection('main');
+    } else {
+      showAlert('error', resultado.error);
+    }
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
+  /**
+   * Cambio de contraseña. Exige la actual (el servidor la verifica) y al
+   * terminar cierra TODAS las sesiones, así que hay que volver a entrar.
+   */
+  const handleSubmitPassword = async (event) => {
+    event.preventDefault();
 
-    if (formData.password && formData.password !== formData.confirmPassword) {
+    if (formData.password !== formData.confirmPassword) {
       showAlert('error', 'Las contraseñas no coinciden');
-      setLoading(false);
+      return;
+    }
+    if (formData.password.length < 8) {
+      showAlert('error', 'La nueva contraseña debe tener al menos 8 caracteres');
       return;
     }
 
-    try {
-      const dataToUpdate = {
-        nombre: formData.nombre,
-        email: formData.email
-      };
+    setLoading(true);
+    const resultado = await changePassword(formData.passwordActual, formData.password);
+    setLoading(false);
 
-      if (formData.password) {
-        dataToUpdate.password = formData.password;
-      }
-
-      const userId = user.id || user.userId;
-      const response = await updateUser(userId, dataToUpdate);
-
-      if (response.data.success) {
-        showAlert('success', 'Perfil actualizado correctamente');
-        setFormData(prev => ({ ...prev, password: '', confirmPassword: '' }));
-        setDisplayName(formData.nombre);
-        setActiveSection('main');
-      }
-    } catch (error) {
-      showAlert('error', 'Error al actualizar perfil: ' + (error.response?.data?.error || error.message));
-    } finally {
-      setLoading(false);
+    if (resultado.success) {
+      showAlert('success', 'Contraseña actualizada. Vuelve a iniciar sesión.');
+      setFormData((prev) => ({ ...prev, passwordActual: '', password: '', confirmPassword: '' }));
+      setTimeout(() => { window.location.href = '/login'; }, 1500);
+    } else {
+      showAlert('error', resultado.error);
     }
   };
 
-  // --- RENDER HELPERS ---
+  // Las subvistas entran desde la derecha y se van por la derecha: si algo
+  // desaparece por un lado, se espera que vuelva a aparecer por ahí.
+  const subviewMotion = {
+    initial: reduceMotion ? { opacity: 0 } : { opacity: 0, x: 24 },
+    animate: { opacity: 1, x: 0 },
+    exit: reduceMotion ? { opacity: 0 } : { opacity: 0, x: 24 },
+    transition: reduceMotion ? crossFade : springSheet,
+  };
 
-  const renderHeader = () => (
-    <div className="flex flex-col items-center py-8 bg-slate-50 border-b border-slate-100">
-      <div className="relative group cursor-pointer mb-4">
-        <div className="w-24 h-24 rounded-full bg-gradient-to-br from-primary-500 to-indigo-600 flex items-center justify-center text-white text-4xl font-bold shadow-lg ring-4 ring-white">
-          {initial}
-        </div>
-        <div className="absolute bottom-0 right-0 bg-slate-900 text-white p-2 rounded-full border-2 border-white shadow-sm">
-          <Camera size={16} />
-        </div>
-      </div>
-      <h2 className="text-xl font-bold text-slate-900">{displayName}</h2>
-      <p className="text-sm text-slate-500">{formData.email}</p>
+  const SubviewHeader = ({ title }) => (
+    <div className="mb-5 flex items-center gap-1">
+      <motion.button
+        type="button"
+        onClick={() => setSection('main')}
+        whileTap={reduceMotion ? { opacity: 0.6 } : { scale: 0.92 }}
+        transition={springSnappy}
+        className="tappable -ml-2 flex items-center gap-0.5 rounded-field py-1 pl-1 pr-2 text-accent transition-colors hover:bg-fill/10"
+      >
+        <ChevronLeft size={20} strokeWidth={2.3} />
+        <span className="text-subhead font-medium">Atrás</span>
+      </motion.button>
+      <h1 className="text-title3 font-semibold text-label">{title}</h1>
     </div>
   );
 
-  const renderListItem = ({ icon: Icon, label, sublabel, onClick, color = "text-primary-600", bg = "bg-primary-50", danger = false }) => (
-    <button
-      onClick={onClick}
-      className={`w-full flex items-center justify-between p-4 bg-white active:bg-slate-50 transition-colors border-b border-slate-50 last:border-0 ${danger ? 'text-red-600' : 'text-slate-900'}`}
-    >
-      <div className="flex items-center gap-4">
-        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${danger ? 'bg-red-50 text-red-500' : bg + ' ' + color}`}>
-          <Icon size={18} />
-        </div>
-        <div className="text-left">
-          <p className="font-medium text-[15px]">{label}</p>
-          {sublabel && <p className="text-xs text-slate-400 mt-0.5">{sublabel}</p>}
-        </div>
-      </div>
-      <ChevronRight size={18} className="text-slate-300" />
-    </button>
-  );
-
-  // --- VISTAS ---
-
-  if (activeSection === 'personal') {
-    return (
-      <div className="min-h-screen bg-slate-100 pb-24">
-        <div className="sticky top-0 z-10 bg-white/80 backdrop-blur-md border-b border-slate-200 px-4 py-3 flex items-center gap-3">
-          <button onClick={() => setActiveSection('main')} className="p-1 -ml-1 text-primary-600">
-            <ArrowLeft size={24} />
-          </button>
-          <h1 className="text-lg font-bold text-slate-900">Datos Personales</h1>
-        </div>
-
-        <div className="p-4 max-w-md mx-auto">
-          <Card className="p-5 space-y-4 shadow-sm border-slate-200">
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <Input
-                label="Nombre Completo"
-                name="nombre"
-                icon={User}
-                value={formData.nombre}
-                onChange={handleChange}
-              />
-              <Input
-                label="Correo Electrónico"
-                name="email"
-                type="email"
-                icon={Mail}
-                value={formData.email}
-                onChange={handleChange}
-              //   disabled // Email usually shouldn't change easily
-              />
-              <div className="pt-2">
-                <Button type="submit" isLoading={loading} className="w-full justify-center">
-                  Guardar Cambios
-                </Button>
-              </div>
-            </form>
-          </Card>
-        </div>
-      </div>
-    );
-  }
-
-  if (activeSection === 'security') {
-    return (
-      <div className="min-h-screen bg-slate-100 pb-24">
-        <div className="sticky top-0 z-10 bg-white/80 backdrop-blur-md border-b border-slate-200 px-4 py-3 flex items-center gap-3">
-          <button onClick={() => setActiveSection('main')} className="p-1 -ml-1 text-primary-600">
-            <ArrowLeft size={24} />
-          </button>
-          <h1 className="text-lg font-bold text-slate-900">Seguridad</h1>
-        </div>
-
-        <div className="p-4 max-w-md mx-auto">
-          <Card className="p-5 space-y-4 shadow-sm border-slate-200">
-            <div className="mb-4 p-3 bg-amber-50 rounded-lg border border-amber-100 text-amber-800 text-xs">
-              <p className="font-bold flex items-center gap-1"><Lock size={12} /> Nota de Seguridad</p>
-              Asegúrate de usar una contraseña fuerte que no utilices en otros sitios.
-            </div>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <Input
-                label="Nueva Contraseña"
-                name="password"
-                type="password"
-                icon={Key}
-                value={formData.password}
-                onChange={handleChange}
-                placeholder="••••••••"
-              />
-              <Input
-                label="Confirmar Contraseña"
-                name="confirmPassword"
-                type="password"
-                icon={Key}
-                value={formData.confirmPassword}
-                onChange={handleChange}
-                placeholder="••••••••"
-              />
-              <div className="pt-2">
-                <Button type="submit" variant="primary" isLoading={loading} className="w-full justify-center">
-                  Actualizar Contraseña
-                </Button>
-              </div>
-            </form>
-          </Card>
-        </div>
-      </div>
-    );
-  }
-
-  // --- MAIN VIEW (WhatsApp Style) ---
   return (
-    <div className="w-full">
-      {/* Desktop Header Adaptation */}
-      <div className="hidden lg:block mb-6">
-        <h1 className="text-2xl font-bold text-slate-800">Perfil de Usuario</h1>
-        <p className="text-slate-500">Administra tu cuenta y preferencias.</p>
-      </div>
+    <div className="mx-auto w-full max-w-2xl pb-4">
+      <AnimatePresence mode="wait" initial={false}>
 
-      <div className="max-w-md mx-auto lg:max-w-2xl bg-white rounded-2xl shadow-sm lg:shadow-xl overflow-hidden border border-slate-200">
+        {section === 'personal' && (
+          <motion.div key="personal" {...subviewMotion}>
+            <SubviewHeader title="Datos personales" />
+            <Card>
+              <form onSubmit={handleSubmitPerfil} className="space-y-4">
+                <Input
+                  label="Nombre completo" name="nombre" icon={CircleUser}
+                  value={formData.nombre} onChange={handleChange} required
+                />
+                <Input
+                  label="Correo electrónico" name="email" type="email" icon={Mail}
+                  value={formData.email} onChange={handleChange} required
+                />
+                <Button type="submit" loading={loading} className="w-full">
+                  Guardar cambios
+                </Button>
+              </form>
+            </Card>
+          </motion.div>
+        )}
 
-        {/* Header */}
-        {renderHeader()}
+        {section === 'security' && (
+          <motion.div key="security" {...subviewMotion}>
+            <SubviewHeader title="Seguridad" />
+            <Card>
+              <div className="mb-4 flex items-start gap-3 rounded-control border border-caution/25 bg-caution/10 p-3.5">
+                <Lock size={17} strokeWidth={2} className="mt-px shrink-0 text-caution" />
+                <p className="text-footnote leading-relaxed text-label-secondary">
+                  Al cambiar la contraseña se cerrarán todas tus sesiones y tendrás que
+                  volver a entrar. Usa una que no utilices en otros sitios.
+                </p>
+              </div>
 
-        {/* List Groups */}
-        <div className="bg-slate-100 pt-2 lg:bg-white lg:pt-0">
+              <form onSubmit={handleSubmitPassword} className="space-y-4">
+                <Input
+                  label="Contraseña actual" name="passwordActual" type="password" icon={Lock}
+                  autoComplete="current-password"
+                  value={formData.passwordActual} onChange={handleChange}
+                  placeholder="••••••••" required
+                />
+                <Input
+                  label="Nueva contraseña" name="password" type="password" icon={KeyRound}
+                  autoComplete="new-password"
+                  value={formData.password} onChange={handleChange}
+                  placeholder="••••••••" required minLength={8} hint="Mínimo 8 caracteres"
+                />
+                <Input
+                  label="Confirmar contraseña" name="confirmPassword" type="password" icon={KeyRound}
+                  autoComplete="new-password"
+                  value={formData.confirmPassword} onChange={handleChange}
+                  placeholder="••••••••" required
+                  error={
+                    formData.confirmPassword && formData.confirmPassword !== formData.password
+                      ? 'Las contraseñas no coinciden'
+                      : undefined
+                  }
+                />
+                <Button type="submit" loading={loading} className="w-full">
+                  Actualizar contraseña
+                </Button>
+              </form>
+            </Card>
+          </motion.div>
+        )}
 
-          {/* Section 1 */}
-          <div className="bg-white mb-2 lg:mb-0 lg:border-t border-b border-slate-200 lg:border-0">
-            {renderListItem({
-              icon: User,
-              label: 'Información Personal',
-              sublabel: 'Nombre, correo electrónico',
-              bg: 'bg-blue-100',
-              color: 'text-blue-600',
-              onClick: () => setActiveSection('personal')
-            })}
-            {renderListItem({
-              icon: Key,
-              label: 'Seguridad',
-              sublabel: 'Cambiar contraseña, 2FA',
-              bg: 'bg-teal-100',
-              color: 'text-teal-600',
-              onClick: () => setActiveSection('security')
-            })}
-          </div>
+        {section === 'main' && (
+          <motion.div
+            key="main"
+            initial={reduceMotion ? { opacity: 0 } : { opacity: 0, x: -24 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={reduceMotion ? { opacity: 0 } : { opacity: 0, x: -24 }}
+            transition={reduceMotion ? crossFade : springSheet}
+          >
+            <div className="mb-6 flex flex-col items-center py-4 text-center">
+              <span className="mb-3 flex h-20 w-20 items-center justify-center rounded-full bg-brand text-large-title font-semibold text-white">
+                {initial}
+              </span>
+              <h1 className="text-title2 font-semibold text-label">{displayName || 'Usuario'}</h1>
+              <p className="mt-0.5 text-subhead text-label-secondary">{formData.email}</p>
+            </div>
 
-          {/* Section 2 */}
-          <div className="bg-white mb-2 lg:mb-0 border-y border-slate-200 lg:border-0 lg:mt-4">
-            {renderListItem({
-              icon: Bell,
-              label: 'Notificaciones',
-              bg: 'bg-rose-100',
-              color: 'text-rose-600',
-              onClick: () => showAlert('info', 'Próximamente: Configuración de notificaciones')
-            })}
-            {renderListItem({
-              icon: Shield,
-              label: 'Privacidad',
-              bg: 'bg-slate-100',
-              color: 'text-slate-600',
-              onClick: () => showAlert('info', 'Próximamente: Ajustes de privacidad')
-            })}
-            {renderListItem({
-              icon: Smartphone,
-              label: 'Apariencia',
-              sublabel: 'Tema claro/oscuro',
-              bg: 'bg-purple-100',
-              color: 'text-purple-600',
-              onClick: () => showAlert('info', 'El tema se ajusta al sistema automáticamente')
-            })}
-          </div>
+            <SettingGroup title="Cuenta">
+              <SettingRow
+                icon={CircleUser} tone="accent"
+                label="Datos personales" sublabel="Nombre y correo electrónico"
+                onClick={() => setSection('personal')}
+              />
+              <SettingRow
+                icon={KeyRound} tone="info"
+                label="Seguridad" sublabel="Cambiar contraseña"
+                onClick={() => setSection('security')}
+              />
+            </SettingGroup>
 
-          {/* Section 3 */}
-          <div className="bg-white mb-8 border-y border-slate-200 lg:border-0 lg:mt-4">
-            {renderListItem({
-              icon: HelpCircle,
-              label: 'Ayuda',
-              bg: 'bg-emerald-100',
-              color: 'text-emerald-600',
-              onClick: () => showAlert('info', 'Contacta a soporte técnico')
-            })}
-            {renderListItem({
-              icon: LogOut,
-              label: 'Cerrar Sesión',
-              bg: 'bg-slate-50',
-              danger: true,
-              onClick: logout
-            })}
-          </div>
+            <SettingGroup title="Preferencias">
+              {/* El control vive junto a lo que cambia: el tema se ajusta aquí
+                  mismo, sin abrir otra pantalla para una sola opción. */}
+              <SettingRow
+                icon={Sun} tone="highlight"
+                label="Apariencia"
+                sublabel={resolvedTheme === 'dark' ? 'Tema oscuro' : 'Tema claro'}
+                trailing={<ThemeToggle />}
+              />
+              <SettingRow
+                icon={Bell} tone="caution"
+                label="Notificaciones" sublabel="Próximamente"
+                onClick={() => showAlert('info', 'Las notificaciones aún no están disponibles')}
+              />
+              <SettingRow
+                icon={Shield} tone="neutral"
+                label="Privacidad" sublabel="Próximamente"
+                onClick={() => showAlert('info', 'Los ajustes de privacidad aún no están disponibles')}
+              />
+            </SettingGroup>
 
-          <div className="pb-8 text-center">
-            <p className="text-xs text-slate-400">Recorridos App v1.2.0</p>
-          </div>
+            <SettingGroup>
+              <SettingRow
+                icon={HelpCircle} tone="positive"
+                label="Ayuda" sublabel="Contactar con soporte"
+                onClick={() => showAlert('info', 'Escribe a soporte para recibir ayuda')}
+              />
+              <SettingRow
+                icon={LogOut} danger
+                label="Cerrar sesión"
+                onClick={() => setShowLogoutConfirm(true)}
+              />
+            </SettingGroup>
 
-        </div>
-      </div>
+            <p className="text-center text-footnote text-label-tertiary">Recorridos v1.2.0</p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <ConfirmModal
+        isOpen={showLogoutConfirm}
+        onClose={() => setShowLogoutConfirm(false)}
+        onConfirm={logout}
+        title="Cerrar sesión"
+        message="Tendrás que volver a introducir tus credenciales para entrar."
+        confirmText="Cerrar sesión"
+        type="warning"
+      />
     </div>
   );
 };

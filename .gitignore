@@ -123,3 +123,6 @@ temp/
 # End of https://www.gitignore.io/api/node
 .vercel
 .env*.local
+
+# Salida del plugin PWA en desarrollo
+dev-dist/
