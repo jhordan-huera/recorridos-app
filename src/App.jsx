@@ -168,7 +168,6 @@ function App() {
     <AlertProvider>
       <AuthProvider>
         <AppContent />
-        <Analytics />
       </AuthProvider>
     </AlertProvider>
   );
