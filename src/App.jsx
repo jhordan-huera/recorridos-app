@@ -160,7 +160,7 @@ function AppContent() {
             no define en el navegador. Sin encontrarlo asume desarrollo, carga
             script.debug.js y no envía nada: la analítica parecía funcionar y no
             registraba una sola visita. Se le pasa el modo explícitamente. */}
-        <Analytics mode={import.meta.env.PROD ? 'production' : 'development'} />
+        <Analytics mode={import.meta.env.MODE === 'production' ? 'production' : 'development'} />
       </Router>
     </AppProvider>
   );
