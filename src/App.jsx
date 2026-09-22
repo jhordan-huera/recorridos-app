@@ -18,6 +18,7 @@ const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Ninos = lazy(() => import('./pages/Ninos'));
 const Vehiculos = lazy(() => import('./pages/Vehiculos'));
 const Recorridos = lazy(() => import('./pages/Recorridos'));
+const Riegos = lazy(() => import('./pages/Riegos'));
 const Users = lazy(() => import('./pages/Users'));
 const Profile = lazy(() => import('./pages/Profile'));
 const Login = lazy(() => import('./pages/Login'));
@@ -119,6 +120,15 @@ function AppContent() {
                       element={
                         <ProtectedRoute>
                           <Recorridos />
+                        </ProtectedRoute>
+                      }
+                    />
+
+                    <Route
+                      path="/riegos"
+                      element={
+                        <ProtectedRoute>
+                          <Riegos />
                         </ProtectedRoute>
                       }
                     />

@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import {
-  LogOut, CircleUser, LayoutGrid, Route, GraduationCap, Bus, ShieldCheck,
+  LogOut, CircleUser, LayoutGrid, Route, GraduationCap, Bus, ShieldCheck, Droplets,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useScrollEdge } from '../../hooks/useScrollEdge';
@@ -13,6 +13,7 @@ import Badge from '../ui/Badge';
 const baseNavItems = [
   { icon: LayoutGrid, path: '/dashboard', label: 'Resumen' },
   { icon: Route, path: '/recorridos', label: 'Recorridos' },
+  { icon: Droplets, path: '/riegos', label: 'Riegos' },
   { icon: GraduationCap, path: '/ninos', label: 'Estudiantes' },
   { icon: Bus, path: '/vehiculos', label: 'Vehículos' },
 ];

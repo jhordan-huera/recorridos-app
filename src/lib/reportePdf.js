@@ -5,83 +5,23 @@
  * periodo, así que está construido como un comprobante y no como un listado:
  * lleva número de documento, remitente, periodo cerrado y total destacado.
  *
- * Decisiones de impresión:
- *  · Sin rayado alterno ni cabeceras de color sólido: en papel gastan tinta y
- *    ensucian la lectura. Se usa una línea fina bajo cada fila, un fondo muy
- *    tenue en el encabezado y una regla marcada que lo separa del cuerpo.
- *  · Un único color de acento, y solo en reglas, el membrete y los totales. El
- *    resto es escala de grises, que es lo que mejor se imprime y mejor envejece.
+ * El aspecto común a los dos informes (colores, membrete, moneda, pies) vive
+ * en pdfComun.js; aquí queda solo la maquetación propia.
+ *
+ * Decisiones de este documento:
  *  · La fecha se escribe una sola vez por día: repetirla en cada fila añade
  *    ruido y dificulta ver dónde empieza un día nuevo.
  *  · El número de pasajeros va en su propia columna. Mezclado con los nombres
  *    ("4 Benjamín Cedeño, …") se leía como si formara parte del primer nombre.
  */
 
-const COLOR = {
-  texto: [17, 24, 39],
-  suave: [107, 114, 128],
-  tenue: [156, 163, 175],
-  linea: [226, 232, 240],
-  acento: [10, 77, 140],
-  tinte: [243, 246, 250],  // fondo del encabezado de tabla y del recuadro total
-  blanco: [255, 255, 255],
-};
+import {
+  COLOR, MARGEN, dinero, MESES, mayuscula, hora, dosDigitos, fechaCorta,
+  etiquetaDia, bloque, regla, membrete, recuadroTotal, pintarPies,
+} from './pdfComun.js';
 
-const MARGEN = 18;
-
-/* Ecuador usa el dólar y, en comprobantes, el punto como separador decimal
-   (así los emite el SRI). `es-EC` daría "$239,86", que en una factura local se
-   lee como un error de formato. */
-const dinero = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
-
-const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
-  'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+/** Propio de este informe: los riegos no tienen tipo de servicio. */
 const TIPO = { traer: 'Traer', llevar: 'Llevar', ambos: 'Ida y vuelta' };
-
-const mayuscula = (t) => t.charAt(0).toUpperCase() + t.slice(1);
-const hora = (valor) => (valor ? String(valor).slice(0, 5) : '—');
-const dosDigitos = (n) => String(n).padStart(2, '0');
-
-/** dd/mm/aaaa con ceros. `toLocaleDateString` devolvía "14/9/2026". */
-const fechaCorta = (d) => `${dosDigitos(d.getDate())}/${dosDigitos(d.getMonth() + 1)}/${d.getFullYear()}`;
-
-const DIAS_SEMANA = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
-
-/** "lun 01" — el día de la semana ayuda a comprobar el patrón de servicio. */
-const etiquetaDia = (dia, mes, anio) => {
-  const fecha = new Date(anio, mes - 1, Number(dia));
-  return `${DIAS_SEMANA[fecha.getDay()]} ${dosDigitos(dia)}`;
-};
-
-/** Etiqueta pequeña en versalitas + valor debajo. */
-const bloque = (doc, { x, y, etiqueta, valor, detalle, alinear = 'left', tam = 10.5 }) => {
-  doc.setFont('helvetica', 'bold').setFontSize(6.2).setTextColor(...COLOR.tenue);
-  doc.text(etiqueta.toUpperCase(), x, y, { align: alinear, charSpace: 0.4 });
-
-  doc.setFont('helvetica', 'bold').setFontSize(tam).setTextColor(...COLOR.texto);
-  doc.text(valor, x, y + 5.6, { align: alinear });
-
-  if (detalle) {
-    doc.setFont('helvetica', 'normal').setFontSize(7.6).setTextColor(...COLOR.suave);
-    doc.text(detalle, x, y + 10.4, { align: alinear });
-  }
-};
-
-const regla = (doc, y, desde, ancho, grosor = 0.2, color = COLOR.linea) => {
-  doc.setDrawColor(...color).setLineWidth(grosor);
-  doc.line(desde, y, desde + ancho, y);
-};
-
-/** Membrete: marca cuadrada + nombre. Se repite reducido en las páginas 2+. */
-const membrete = (doc, y, tam = 10) => {
-  doc.setFillColor(...COLOR.acento);
-  doc.roundedRect(MARGEN, y, tam, tam, 1.4, 1.4, 'F');
-  doc.setFont('helvetica', 'bold').setFontSize(tam * 0.7).setTextColor(...COLOR.blanco);
-  doc.text('R', MARGEN + tam / 2, y + tam * 0.685, { align: 'center' });
-
-  doc.setFont('helvetica', 'bold').setFontSize(tam * 0.82).setTextColor(...COLOR.texto);
-  doc.text('RECORRIDOS', MARGEN + tam + 4.5, y + tam * 0.66, { charSpace: 1.3 });
-};
 
 /**
  * @param {object[]} recorridos Lista plana del periodo.
@@ -262,6 +202,11 @@ export const construirReportePdf = async ({ recorridos = [], mes, anio, usuario 
       4: { cellWidth: 9, halign: 'center', textColor: COLOR.suave },
       5: { cellWidth: 'auto', fontSize: 7.5, textColor: COLOR.suave },
       6: { cellWidth: 23, halign: 'right', fontStyle: 'bold' },
+    },
+    // headStyles gana a columnStyles en la cabecera, así que "Costo" quedaba
+    // alineado a la izquierda sobre cifras alineadas a la derecha.
+    didParseCell: ({ column, cell, section }) => {
+      if (section === 'head' && column.index === 6) cell.styles.halign = 'right';
     },
     // Membrete reducido en las páginas de continuación.
     didDrawPage: ({ pageNumber }) => {

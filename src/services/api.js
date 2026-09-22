@@ -315,6 +315,20 @@ export const removeNinoFromRecorrido = (id) => api.delete(`/recorridos/ninos/${i
 export const updateNotaNinoRecorrido = (id, notas) => api.patch(`/recorridos/ninos/${id}`, { notas });
 
 /* ─────────────────────────────────────────────────────────────────────────────
+ * RIEGOS
+ *
+ * `costo` se omite en el alta habitual: la tabla lo pone a 1.00. Mandarlo solo
+ * cuando el usuario lo cambia evita fijar aquí un valor por defecto que algún
+ * día discreparía del de la base de datos.
+ * ───────────────────────────────────────────────────────────────────────────── */
+export const getRiegos = (opciones) => api.get('/riegos', listaParams(opciones));
+export const getAllRiegos = (filtros) => obtenerTodo((p) => getRiegos({ ...filtros, ...p }));
+export const getRiegoById = (id) => api.get(`/riegos/${id}`);
+export const createRiego = (data) => api.post('/riegos', data);
+export const updateRiego = (id, data) => api.put(`/riegos/${id}`, data);
+export const deleteRiego = (id) => api.delete(`/riegos/${id}`);
+
+/* ─────────────────────────────────────────────────────────────────────────────
  * Helpers de rol
  * ───────────────────────────────────────────────────────────────────────────── */
 export const getCurrentUserInfo = () => {

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { motion, useReducedMotion } from 'motion/react';
-import { LayoutGrid, Route, GraduationCap, Bus, ShieldCheck, CircleUser } from 'lucide-react';
+import { LayoutGrid, Route, GraduationCap, Bus, ShieldCheck, CircleUser, Droplets } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { springSnappy, haptics } from '../../lib/motion';
 
@@ -10,6 +10,7 @@ import { springSnappy, haptics } from '../../lib/motion';
 const baseNavItems = [
     { icon: LayoutGrid, label: 'Resumen', path: '/dashboard' },
     { icon: Route, label: 'Recorridos', path: '/recorridos' },
+    { icon: Droplets, label: 'Riegos', path: '/riegos' },
     { icon: GraduationCap, label: 'Estudiantes', path: '/ninos' },
     { icon: Bus, label: 'Vehículos', path: '/vehiculos' },
 ];
