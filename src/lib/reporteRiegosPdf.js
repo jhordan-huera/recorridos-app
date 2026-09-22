@@ -13,9 +13,10 @@
  */
 
 import {
-  COLOR, MARGEN, dinero, MESES, mayuscula, hora, dosDigitos, fechaCorta,
-  etiquetaDia, bloque, regla, membrete, recuadroTotal, pintarPies,
+  COLOR, MARGEN, dinero, MESES, mayuscula, dosDigitos, fechaCorta,
+  bloque, regla, rotulo, membrete, recuadroTotal, pintarPies,
 } from './pdfComun.js';
+import { tablaDeRiegos, ordenarRiegos, sumar, diasDistintos } from './tablasPdf.js';
 
 /**
  * @param {object[]} riegos  Lista del periodo: { fecha, hora, costo }
@@ -34,14 +35,10 @@ export const construirReporteRiegosPdf = async ({ riegos = [], mes, anio, usuari
   const derecha = ancho - MARGEN;
 
   /* ── Métricas ───────────────────────────────────────────────────────────── */
-  const dia = (r) => Number(String(r.fecha).slice(8, 10));
-  const ordenados = [...riegos].sort((a, b) => {
-    const d = dia(a) - dia(b);
-    return d !== 0 ? d : String(a.hora).localeCompare(String(b.hora));
-  });
+  const ordenados = ordenarRiegos(riegos);
 
-  const total = ordenados.reduce((suma, r) => suma + (parseFloat(r.costo) || 0), 0);
-  const dias = new Set(ordenados.map(dia)).size;
+  const total = sumar(ordenados);
+  const dias = diasDistintos(ordenados);
   const promedio = ordenados.length ? total / ordenados.length : 0;
 
   const periodo = `${mayuscula(MESES[mes - 1])} ${anio}`;
@@ -80,8 +77,7 @@ export const construirReporteRiegosPdf = async ({ riegos = [], mes, anio, usuari
   regla(doc, 67, MARGEN, util);
 
   /* ── Resumen ────────────────────────────────────────────────────────────── */
-  doc.setFont('helvetica', 'bold').setFontSize(6.2).setTextColor(...COLOR.tenue);
-  doc.text('RESUMEN DEL PERIODO', MARGEN, 75, { charSpace: 0.4 });
+  rotulo(doc, 'RESUMEN DEL PERIODO', MARGEN, 75);
 
   const metricas = [
     [String(ordenados.length), ordenados.length === 1 ? 'Riego' : 'Riegos'],
@@ -98,67 +94,12 @@ export const construirReporteRiegosPdf = async ({ riegos = [], mes, anio, usuari
 
   regla(doc, 96, MARGEN, util);
 
-  doc.setFont('helvetica', 'bold').setFontSize(6.2).setTextColor(...COLOR.tenue);
-  doc.text('DETALLE', MARGEN, 104, { charSpace: 0.4 });
+  rotulo(doc, 'DETALLE', MARGEN, 104);
 
   /* ── Detalle a dos columnas ─────────────────────────────────────────────── */
-  // Se parte por la mitad y no de forma alterna: así cada columna queda en
-  // orden cronológico y se lee de arriba abajo, como una lista normal.
-  const mitad = Math.ceil(ordenados.length / 2);
-  const izquierda = ordenados.slice(0, mitad);
-  const derechaCol = ordenados.slice(mitad);
-
-  const celdas = (r) => (r
-    ? [etiquetaDia(dia(r), mes, anio), hora(r.hora), dinero.format(parseFloat(r.costo) || 0)]
-    : ['', '', '']);
-
-  const filas = izquierda.map((r, i) => [...celdas(r), '', ...celdas(derechaCol[i])]);
-
-  autoTable(doc, {
-    startY: 108,
-    margin: { left: MARGEN, right: MARGEN, top: 30, bottom: 24 },
-    head: [['Día', 'Hora', 'Costo', '', 'Día', 'Hora', 'Costo']],
-    body: filas,
-    theme: 'plain',
-    styles: {
-      font: 'helvetica', fontSize: 8, textColor: COLOR.texto,
-      cellPadding: { top: 2.5, bottom: 2.5, left: 2, right: 2 },
-      valign: 'top',
-    },
-    headStyles: {
-      fontStyle: 'bold', fontSize: 6.6, textColor: COLOR.texto,
-      fillColor: COLOR.tinte, charSpace: 0.3,
-      cellPadding: { top: 2.4, bottom: 2.4, left: 2, right: 2 },
-      lineWidth: { bottom: 0.5 }, lineColor: COLOR.acento,
-    },
-    bodyStyles: { lineWidth: { bottom: 0.1 }, lineColor: COLOR.linea },
-    columnStyles: {
-      0: { cellWidth: 24, fontStyle: 'bold' },
-      1: { cellWidth: 18, textColor: COLOR.suave },
-      2: { cellWidth: 30, halign: 'right', fontStyle: 'bold' },  // halign aplica también a la cabecera
-      // Canal central: separa las dos mitades sin pintar nada.
-      3: { cellWidth: 30, lineWidth: 0 },
-      4: { cellWidth: 24, fontStyle: 'bold' },
-      5: { cellWidth: 18, textColor: COLOR.suave },
-      6: { cellWidth: 30, halign: 'right', fontStyle: 'bold' },
-    },
-    didParseCell: ({ row, column, cell, section }) => {
-      // headStyles gana a columnStyles en las celdas de cabecera, así que el
-      // halign de la columna de importes no llegaba a aplicarse y "Costo"
-      // quedaba a la izquierda de sus propias cifras.
-      if (section === 'head' && (column.index === 2 || column.index === 6)) {
-        cell.styles.halign = 'right';
-      }
-      // Una fila sin pareja no debe pintar la línea inferior de la mitad vacía.
-      if (section === 'body' && column.index >= 4 && !row.raw[4]) cell.styles.lineWidth = 0;
-    },
-    didDrawPage: ({ pageNumber }) => {
-      if (pageNumber === 1) return;
-      membrete(doc, 12, 7.5);
-      doc.setFont('helvetica', 'normal').setFontSize(7.6).setTextColor(...COLOR.suave);
-      doc.text(`Riegos N.º ${numeroDoc}  ·  ${periodo}`, derecha, 17.5, { align: 'right' });
-      regla(doc, 22, MARGEN, util, 0.4, COLOR.acento);
-    },
+  tablaDeRiegos(doc, autoTable, {
+    riegos: ordenados, mes, anio, startY: 108,
+    numeroDoc, periodo, util, derecha,
   });
 
   /* ── Cierre ─────────────────────────────────────────────────────────────── */
