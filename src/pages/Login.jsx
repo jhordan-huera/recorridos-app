@@ -46,11 +46,13 @@ const Login = () => {
 
     setError('');
     setIsLoading(true);
-    const result = await login(usuario.trim(), password);
+    await login(usuario.trim(), password);
     setIsLoading(false);
-    // La navegación real la hace el efecto de arriba, que ya conoce los
-    // permisos de la cuenta recién cargada.
-    if (result.success) navigate(inicio);
+    // Aquí NO se navega. El destino depende de los permisos de la cuenta, y en
+    // este punto `inicio` todavía es el de antes de entrar: sin usuario aún,
+    // valía /perfil y mandaba allí un instante antes de corregirse. De llevar
+    // a cada quien a su sitio se encarga el efecto de arriba, que se dispara
+    // cuando el usuario ya está cargado.
   };
 
   return (

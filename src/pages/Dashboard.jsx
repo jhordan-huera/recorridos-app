@@ -10,6 +10,7 @@ import { useAlert } from '../context/AlertContext';
 import { useAuth } from '../context/AuthContext';
 import { generarReportePdf } from '../lib/reportePdf';
 import { generarReporteRiegosPdf } from '../lib/reporteRiegosPdf.js';
+import { generarReporteGeneralPdf } from '../lib/reporteGeneralPdf.js';
 import { useApp } from '../context/AppContext';
 import {
   createRecorrido, updateRecorrido, deleteRecorrido,
@@ -592,6 +593,36 @@ const Dashboard = () => {
     }
   };
 
+  /**
+   * Un único documento cuando la cuenta usa los dos servicios.
+   *
+   * Dos PDF sueltos obligaban a sumarlos a mano para saber cuánto se paga en
+   * total, que es justo lo que el papel tiene que contestar.
+   */
+  const exportarGeneralPDF = async () => {
+    try {
+      const losRecorridos = Object.values(recorridosMensuales).flat();
+      const losRiegos = Object.values(riegosMensuales).flat();
+
+      if (losRecorridos.length === 0 && losRiegos.length === 0) {
+        showAlert('warning', 'No hay nada registrado en este mes para exportar');
+        return;
+      }
+
+      await generarReporteGeneralPdf({
+        recorridos: losRecorridos,
+        riegos: losRiegos,
+        mes: mesActual,
+        anio: anioActual,
+        usuario: { nombre: user?.nombre, usuario: user?.usuario },
+      });
+      showAlert('success', 'Estado de cuenta general generado');
+    } catch (error) {
+      console.error(error);
+      showAlert('error', 'No se pudo generar el PDF');
+    }
+  };
+
   /** Los riegos del mes en su propio PDF, con el mismo formato que su pantalla. */
   const exportarRiegosPDF = async () => {
     try {
@@ -657,10 +688,19 @@ const Dashboard = () => {
                 mandar solo sobre ella. */}
             <MonthStepper />
 
-            {/* Cada informe se descarga por separado porque son dos documentos
-                distintos: el estado de cuenta de recorridos y el de riegos.
-                Cada acción aparece solo si la cuenta tiene ese módulo. */}
-            {puedeRecorridos && (
+            {/* Con los dos servicios se emite UN documento con su total; con
+                uno solo, el informe propio de ese servicio. Dos botones para
+                quien solo usa uno serían un botón que nunca sirve. */}
+            {puedeRecorridos && puedeRiegos ? (
+              <Button
+                variant="secondary"
+                onClick={exportarGeneralPDF}
+                disabled={cargando || (totalRecorridosMes === 0 && totalRiegosMes === 0)}
+                icon={<FileDown size={16} strokeWidth={2.1} />}
+              >
+                PDF del mes
+              </Button>
+            ) : puedeRecorridos ? (
               <Button
                 variant="secondary"
                 onClick={exportarPDF}
@@ -669,8 +709,7 @@ const Dashboard = () => {
               >
                 PDF recorridos
               </Button>
-            )}
-            {puedeRiegos && (
+            ) : (
               <Button
                 variant="secondary"
                 onClick={exportarRiegosPDF}

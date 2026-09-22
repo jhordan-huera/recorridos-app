@@ -64,6 +64,18 @@ export const bloque = (doc, { x, y, etiqueta, valor, detalle, alinear = 'left', 
   }
 };
 
+/**
+ * Rótulo de sección ("RESUMEN DEL PERIODO", "DETALLE…").
+ *
+ * En versalitas pequeñas y gris claro se perdía al abrir el PDF en el móvil,
+ * donde la página entra a un tercio de su tamaño. Va un punto más grande y en
+ * el gris medio, no en el tenue: sigue siendo secundario, pero se lee.
+ */
+export const rotulo = (doc, texto, x, y) => {
+  doc.setFont('helvetica', 'bold').setFontSize(7.2).setTextColor(...COLOR.suave);
+  doc.text(texto, x, y, { charSpace: 0.4 });
+};
+
 export const regla = (doc, y, desde, ancho, grosor = 0.2, color = COLOR.linea) => {
   doc.setDrawColor(...color).setLineWidth(grosor);
   doc.line(desde, y, desde + ancho, y);
@@ -101,6 +113,22 @@ export const recuadroTotal = (doc, { x, y, ancho, alto, etiqueta, valor, derecha
 };
 
 /** Pie con numeración, escrito al final porque antes no se sabe el total. */
+/**
+ * Cabecera reducida de las páginas de continuación.
+ *
+ * Devuelve el callback que espera autoTable: la primera página ya trae el
+ * membrete completo, así que solo se pinta de la segunda en adelante.
+ */
+export const cabeceraDeContinuacion = (doc, { etiqueta, numeroDoc, periodo, util, derecha }) => (
+  ({ pageNumber }) => {
+    if (pageNumber === 1) return;
+    membrete(doc, 12, 7.5);
+    doc.setFont('helvetica', 'normal').setFontSize(7.6).setTextColor(...COLOR.suave);
+    doc.text(`${etiqueta} N.º ${numeroDoc}  ·  ${periodo}`, derecha, 17.5, { align: 'right' });
+    regla(doc, 22, MARGEN, util, 0.4, COLOR.acento);
+  }
+);
+
 export const pintarPies = (doc, { numeroDoc, usuario, alto, util, derecha, documento = 'Estado de cuenta' }) => {
   const paginas = doc.getNumberOfPages();
   for (let p = 1; p <= paginas; p++) {
