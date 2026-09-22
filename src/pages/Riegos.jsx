@@ -1,51 +1,33 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { Plus, Droplets, Pencil, Trash2, FileDown, ChevronLeft, ChevronRight, DollarSign } from 'lucide-react';
+import {
+  Plus, Droplets, Pencil, Trash2, FileDown, ChevronLeft, ChevronRight,
+  DollarSign, CalendarDays,
+} from 'lucide-react';
 import { useAlert } from '../context/AlertContext';
 import { useAuth } from '../context/AuthContext';
-import {
-  getAllRiegos, createRiego, updateRiego, deleteRiego,
-  mensajeDeError, fueBien, mensajeDeRespuesta,
-} from '../services/api';
+import { getAllRiegos, deleteRiego, mensajeDeError, fueBien, mensajeDeRespuesta } from '../services/api';
 import { generarReporteRiegosPdf } from '../lib/reporteRiegosPdf.js';
-import Modal from '../components/ui/Modal';
 import ConfirmModal from '../components/ui/ConfirmModal';
+import RiegoModal from '../components/RiegoModal';
 import Button from '../components/ui/Button';
-import Input from '../components/ui/Input';
 import Card from '../components/ui/Card';
 import CardSkeleton from '../components/ui/CardSkeleton';
 import PageHeader from '../components/ui/PageHeader';
 import StatCard from '../components/ui/StatCard';
 import EmptyState from '../components/ui/EmptyState';
+import CalendarioMes from '../components/ui/CalendarioMes';
+import { MESES, dosDigitos, rangoDelMes, diaDeFecha } from '../lib/fechas';
 import { crossFade, springSheet } from '../lib/motion';
 
-const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
-  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 const DIAS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
 
-const dosDigitos = (n) => String(n).padStart(2, '0');
 const dinero = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
-
-/** Primer y último día del mes en YYYY-MM-DD, sin pasar por Date para no
- *  arrastrar desfases de zona horaria. */
-const rangoDelMes = (mes, anio) => ({
-  desde: `${anio}-${dosDigitos(mes)}-01`,
-  hasta: `${anio}-${dosDigitos(mes)}-${dosDigitos(new Date(anio, mes, 0).getDate())}`,
-});
 
 const etiquetaFecha = (fecha) => {
   const [a, m, d] = String(fecha).split('-').map(Number);
   return `${DIAS[new Date(a, m - 1, d).getDay()]} ${dosDigitos(d)}`;
 };
-
-const hoyISO = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${dosDigitos(d.getMonth() + 1)}-${dosDigitos(d.getDate())}`;
-};
-
-/* El costo vacío NO se envía: la base de datos pone 1.00. Prefijarlo aquí
-   duplicaría el valor por defecto en dos sitios que algún día discreparían. */
-const formVacio = () => ({ fecha: hoyISO(), hora: '07:00', costo: '' });
 
 const Riegos = () => {
   const { showAlert } = useAlert();
@@ -57,13 +39,12 @@ const Riegos = () => {
   const [anio, setAnio] = useState(ahora.getFullYear());
 
   const [riegos, setRiegos] = useState([]);
-  const [formData, setFormData] = useState(formVacio);
   const [mostrarModal, setMostrarModal] = useState(false);
+  const [enEdicion, setEnEdicion] = useState(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [aEliminar, setAEliminar] = useState(null);
-  const [editId, setEditId] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [borrando, setBorrando] = useState(false);
 
   const cargar = useCallback(async () => {
     setLoading(true);
@@ -90,56 +71,30 @@ const Riegos = () => {
     [ordenados]
   );
 
+  /** Riegos agrupados por día del mes: un día puede tener más de uno. */
+  const porDia = useMemo(() => {
+    const mapa = {};
+    ordenados.forEach((riego) => {
+      const dia = diaDeFecha(riego.fecha);
+      if (dia) (mapa[dia] ??= []).push(riego);
+    });
+    return mapa;
+  }, [ordenados]);
+
+  const diasRegados = Object.keys(porDia).length;
+
   const cambiarMes = (delta) => {
     const d = new Date(anio, mes - 1 + delta, 1);
     setMes(d.getMonth() + 1);
     setAnio(d.getFullYear());
   };
 
-  const resetForm = () => { setEditId(null); setFormData(formVacio()); };
-  const cerrarModal = () => { resetForm(); setMostrarModal(false); };
-
-  const handleSubmit = async (event) => {
-    event.preventDefault();
-    if (!formData.fecha || !formData.hora) {
-      showAlert('warning', 'La fecha y la hora son obligatorias');
-      return;
-    }
-
-    setSaving(true);
-    const datos = { fecha: formData.fecha, hora: formData.hora };
-    // Solo se manda si el usuario escribió algo; si no, manda el DEFAULT.
-    if (String(formData.costo).trim() !== '') datos.costo = parseFloat(formData.costo);
-
-    try {
-      const respuesta = editId ? await updateRiego(editId, datos) : await createRiego(datos);
-      if (fueBien(respuesta)) {
-        showAlert('success', editId ? 'Riego actualizado' : 'Riego registrado');
-        cerrarModal();
-        cargar();
-      } else {
-        showAlert('error', mensajeDeRespuesta(respuesta));
-      }
-    } catch (error) {
-      showAlert('error', `No se pudo ${editId ? 'actualizar' : 'registrar'}: ` + mensajeDeError(error));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleEdit = (riego) => {
-    setEditId(riego.id);
-    setFormData({
-      fecha: String(riego.fecha).slice(0, 10),
-      hora: String(riego.hora).slice(0, 5),
-      costo: riego.costo ?? '',
-    });
-    setMostrarModal(true);
-  };
+  const abrirNuevo = () => { setEnEdicion(null); setMostrarModal(true); };
+  const abrirEdicion = (riego) => { setEnEdicion(riego); setMostrarModal(true); };
 
   const confirmarBorrado = async () => {
     if (!aEliminar) return;
-    setSaving(true);
+    setBorrando(true);
     try {
       const respuesta = await deleteRiego(aEliminar);
       if (fueBien(respuesta)) { showAlert('success', 'Riego eliminado'); cargar(); }
@@ -147,7 +102,7 @@ const Riegos = () => {
     } catch (error) {
       showAlert('error', 'No se pudo eliminar: ' + mensajeDeError(error));
     } finally {
-      setSaving(false);
+      setBorrando(false);
       setShowDeleteModal(false);
       setAEliminar(null);
     }
@@ -161,7 +116,7 @@ const Riegos = () => {
     try {
       await generarReporteRiegosPdf({
         riegos: ordenados, mes, anio,
-        usuario: { nombre: user?.nombre, email: user?.email },
+        usuario: { nombre: user?.nombre, usuario: user?.usuario },
       });
       showAlert('success', 'Reporte de riegos generado');
     } catch (error) {
@@ -198,10 +153,7 @@ const Riegos = () => {
             <Button variant="secondary" onClick={descargarPdf} icon={<FileDown size={17} strokeWidth={2.1} />}>
               PDF
             </Button>
-            <Button
-              onClick={() => { resetForm(); setMostrarModal(true); }}
-              icon={<Plus size={17} strokeWidth={2.3} />}
-            >
+            <Button onClick={abrirNuevo} icon={<Plus size={17} strokeWidth={2.3} />}>
               Nuevo riego
             </Button>
           </>
@@ -211,13 +163,55 @@ const Riegos = () => {
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
         <StatCard
           label="Riegos del mes" value={loading ? '—' : ordenados.length}
-          icon={Droplets} tone="info" footnote={`${MESES[mes - 1]} ${anio}`}
+          icon={Droplets} tone="info"
+          footnote={loading
+            ? `${MESES[mes - 1]} ${anio}`
+            : `${diasRegados} ${diasRegados === 1 ? 'día' : 'días'} con riego`}
         />
         <StatCard
           label="Total del mes" value={loading ? '—' : dinero.format(total)}
           icon={DollarSign} tone="positive" footnote="Suma de los riegos registrados"
         />
       </div>
+
+      <Card padding="p-0" className="mb-6 overflow-hidden">
+        <div className="flex items-center gap-2 border-b border-separator/50 p-5">
+          <CalendarDays size={18} strokeWidth={2.1} className="text-info" />
+          <h2 className="text-headline font-semibold text-label">Días con riego</h2>
+        </div>
+
+        <div className="p-3 sm:p-5">
+          <CalendarioMes
+            mes={mes}
+            anio={anio}
+            altura="h-12 sm:h-16"
+            renderDia={(numero) => {
+              const delDia = porDia[numero];
+              if (!delDia) return null;
+
+              return (
+                <div className="mt-auto flex flex-col items-center gap-0.5">
+                  <span
+                    aria-hidden="true"
+                    className="flex h-5 w-5 items-center justify-center rounded-full bg-info/16 text-info sm:h-6 sm:w-6"
+                  >
+                    <Droplets size={12} strokeWidth={2.2} />
+                  </span>
+                  {/* La hora solo cabe en pantalla grande; en el móvil basta la gota. */}
+                  <span className="tabular hidden text-caption2 text-label-tertiary sm:block">
+                    {delDia.length > 1
+                      ? `${delDia.length} riegos`
+                      : String(delDia[0].hora).slice(0, 5)}
+                  </span>
+                  <span className="sr-only">
+                    {delDia.length} {delDia.length === 1 ? 'riego' : 'riegos'}
+                  </span>
+                </div>
+              );
+            }}
+          />
+        </div>
+      </Card>
 
       {loading ? (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -229,7 +223,7 @@ const Riegos = () => {
           title="Sin riegos este mes"
           message={`No hay ningún riego registrado en ${MESES[mes - 1].toLowerCase()} de ${anio}.`}
           action={
-            <Button onClick={() => { resetForm(); setMostrarModal(true); }} icon={<Plus size={17} strokeWidth={2.3} />}>
+            <Button onClick={abrirNuevo} icon={<Plus size={17} strokeWidth={2.3} />}>
               Nuevo riego
             </Button>
           }
@@ -266,7 +260,7 @@ const Riegos = () => {
                       {dinero.format(parseFloat(riego.costo) || 0)}
                     </span>
                     <button
-                      type="button" onClick={() => handleEdit(riego)}
+                      type="button" onClick={() => abrirEdicion(riego)}
                       aria-label={`Editar riego del ${etiquetaFecha(riego.fecha)}`}
                       className="rounded-field p-2 text-label-secondary hover:bg-fill/10"
                     >
@@ -288,40 +282,12 @@ const Riegos = () => {
         </div>
       )}
 
-      <Modal
-        isOpen={mostrarModal}
-        onClose={cerrarModal}
-        title={editId ? 'Editar riego' : 'Nuevo riego'}
-        description={editId ? null : 'Si dejas el costo vacío se registra como $1.00.'}
-      >
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <Input
-            label="Fecha" type="date" name="fecha" value={formData.fecha}
-            onChange={(e) => setFormData({ ...formData, fecha: e.target.value })}
-            required disabled={saving}
-          />
-          <Input
-            label="Hora" type="time" name="hora" value={formData.hora}
-            onChange={(e) => setFormData({ ...formData, hora: e.target.value })}
-            required disabled={saving}
-          />
-          <Input
-            label="Costo" type="number" name="costo" step="0.01" min="0"
-            placeholder="1.00"
-            value={formData.costo}
-            onChange={(e) => setFormData({ ...formData, costo: e.target.value })}
-            disabled={saving}
-          />
-          <div className="flex justify-end gap-2 pt-2">
-            <Button type="button" variant="secondary" onClick={cerrarModal} disabled={saving}>
-              Cancelar
-            </Button>
-            <Button type="submit" disabled={saving}>
-              {saving ? 'Guardando…' : editId ? 'Guardar cambios' : 'Registrar'}
-            </Button>
-          </div>
-        </form>
-      </Modal>
+      <RiegoModal
+        abierto={mostrarModal}
+        onCerrar={() => setMostrarModal(false)}
+        riego={enEdicion}
+        onGuardado={cargar}
+      />
 
       <ConfirmModal
         isOpen={showDeleteModal}
@@ -330,6 +296,7 @@ const Riegos = () => {
         title="Eliminar riego"
         message="El registro dejará de aparecer en los listados y en el PDF. ¿Continuar?"
         confirmText="Eliminar"
+        loading={borrando}
       />
     </div>
   );

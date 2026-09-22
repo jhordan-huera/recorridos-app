@@ -21,7 +21,7 @@ import {
  * @param {object[]} riegos  Lista del periodo: { fecha, hora, costo }
  * @param {number}   mes     1-12
  * @param {number}   anio
- * @param {object}   usuario { nombre, email }
+ * @param {object}   usuario { nombre, usuario }
  */
 export const construirReporteRiegosPdf = async ({ riegos = [], mes, anio, usuario = {} }) => {
   const { jsPDF } = await import('jspdf');
@@ -70,7 +70,7 @@ export const construirReporteRiegosPdf = async ({ riegos = [], mes, anio, usuari
 
   bloque(doc, {
     x: MARGEN, y: 42, etiqueta: 'Emitido por',
-    valor: usuario.nombre || '—', detalle: usuario.email || '',
+    valor: usuario.nombre || '—', detalle: usuario.usuario || '',
   });
   bloque(doc, {
     x: MARGEN + 58, y: 42, etiqueta: 'Periodo facturado',

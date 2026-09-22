@@ -2,21 +2,14 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import {
-  LogOut, CircleUser, LayoutGrid, Route, GraduationCap, Bus, ShieldCheck, Droplets,
+  LogOut, CircleUser, Route,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { entradasDeMenu } from '../../lib/navegacion';
 import { useScrollEdge } from '../../hooks/useScrollEdge';
 import { crossFade, springSnappy, haptics } from '../../lib/motion';
 import ThemeToggle from '../ui/ThemeToggle';
 import Badge from '../ui/Badge';
-
-const baseNavItems = [
-  { icon: LayoutGrid, path: '/dashboard', label: 'Resumen' },
-  { icon: Route, path: '/recorridos', label: 'Recorridos' },
-  { icon: Droplets, path: '/riegos', label: 'Riegos' },
-  { icon: GraduationCap, path: '/ninos', label: 'Estudiantes' },
-  { icon: Bus, path: '/vehiculos', label: 'Vehículos' },
-];
 
 const extractName = (u) => {
   if (!u) return null;
@@ -24,7 +17,7 @@ const extractName = (u) => {
 };
 
 const Header = () => {
-  const { user, isAdmin, logout } = useAuth();
+  const { user, isAdmin, puedeRecorridos, puedeRiegos, logout } = useAuth();
   const [showUserMenu, setShowUserMenu] = useState(false);
   const userMenuRef = useRef(null);
   const navigate = useNavigate();
@@ -37,20 +30,20 @@ const Header = () => {
   const [displayName, setDisplayName] = useState(() => {
     const directName = extractName(user);
     if (directName) return directName;
-    if (typeof window !== 'undefined' && user?.email) {
+    if (typeof window !== 'undefined' && user?.usuario) {
       try {
         const cached = JSON.parse(localStorage.getItem('authUserCache') || '{}');
-        if (cached.email === user.email && cached.name) return cached.name;
+        if (cached.usuario === user.usuario && cached.name) return cached.name;
       } catch { /* caché ilegible: seguimos con el correo */ }
     }
-    return user?.email?.split('@')[0] || 'Usuario';
+    return user?.usuario?.split('@')[0] || 'Usuario';
   });
 
   useEffect(() => {
     const realName = extractName(user);
-    if (realName && user?.email) {
+    if (realName && user?.usuario) {
       setDisplayName(realName);
-      localStorage.setItem('authUserCache', JSON.stringify({ name: realName, email: user.email }));
+      localStorage.setItem('authUserCache', JSON.stringify({ name: realName, usuario: user.usuario }));
     }
   }, [user]);
 
@@ -80,9 +73,7 @@ const Header = () => {
     logout();
   };
 
-  const navItems = isAdmin
-    ? [...baseNavItems, { icon: ShieldCheck, path: '/users', label: 'Usuarios' }]
-    : baseNavItems;
+  const navItems = entradasDeMenu({ isAdmin, puedeRecorridos, puedeRiegos });
 
   return (
     <header
@@ -174,7 +165,7 @@ const Header = () => {
                     </span>
                     <div className="min-w-0">
                       <p className="vibrant truncate text-subhead font-semibold text-label">{displayName}</p>
-                      <p className="vibrant truncate text-footnote text-label-secondary">{user?.email}</p>
+                      <p className="vibrant truncate text-footnote text-label-secondary">{user?.usuario}</p>
                     </div>
                   </div>
 

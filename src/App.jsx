@@ -100,7 +100,7 @@ function AppContent() {
                     <Route
                       path="/ninos"
                       element={
-                        <ProtectedRoute>
+                        <ProtectedRoute modulo="recorridos">
                           <Ninos />
                         </ProtectedRoute>
                       }
@@ -109,7 +109,7 @@ function AppContent() {
                     <Route
                       path="/vehiculos"
                       element={
-                        <ProtectedRoute>
+                        <ProtectedRoute modulo="recorridos">
                           <Vehiculos />
                         </ProtectedRoute>
                       }
@@ -118,7 +118,7 @@ function AppContent() {
                     <Route
                       path="/recorridos"
                       element={
-                        <ProtectedRoute>
+                        <ProtectedRoute modulo="recorridos">
                           <Recorridos />
                         </ProtectedRoute>
                       }
@@ -127,7 +127,7 @@ function AppContent() {
                     <Route
                       path="/riegos"
                       element={
-                        <ProtectedRoute>
+                        <ProtectedRoute modulo="riegos">
                           <Riegos />
                         </ProtectedRoute>
                       }

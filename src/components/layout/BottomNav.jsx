@@ -1,28 +1,16 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { motion, useReducedMotion } from 'motion/react';
-import { LayoutGrid, Route, GraduationCap, Bus, ShieldCheck, CircleUser, Droplets } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { entradasDeMenu } from '../../lib/navegacion';
 import { springSnappy, haptics } from '../../lib/motion';
-
-// Los nombres describen lo que hay dentro, no un paraguas vago: "Resumen"
-// dice más que "Inicio" sobre qué se va a encontrar al llegar.
-const baseNavItems = [
-    { icon: LayoutGrid, label: 'Resumen', path: '/dashboard' },
-    { icon: Route, label: 'Recorridos', path: '/recorridos' },
-    { icon: Droplets, label: 'Riegos', path: '/riegos' },
-    { icon: GraduationCap, label: 'Estudiantes', path: '/ninos' },
-    { icon: Bus, label: 'Vehículos', path: '/vehiculos' },
-];
 
 const BottomNav = () => {
     const location = useLocation();
-    const { isAdmin } = useAuth();
+    const { isAdmin, puedeRecorridos, puedeRiegos } = useAuth();
     const reduceMotion = useReducedMotion();
 
-    const navItems = isAdmin
-        ? [...baseNavItems, { icon: ShieldCheck, label: 'Usuarios', path: '/users' }, { icon: CircleUser, label: 'Perfil', path: '/perfil' }]
-        : [...baseNavItems, { icon: CircleUser, label: 'Perfil', path: '/perfil' }];
+    const navItems = entradasDeMenu({ isAdmin, puedeRecorridos, puedeRiegos, incluirPerfil: true });
 
     return (
         <nav

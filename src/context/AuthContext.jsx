@@ -1,7 +1,6 @@
 import React, { createContext, useState, useContext, useEffect, useCallback } from 'react';
 import {
   login as loginApi,
-  register as registerApi,
   logoutApi,
   getCurrentUser,
   updateProfile as updateProfileApi,
@@ -64,10 +63,10 @@ export const AuthProvider = ({ children }) => {
     comprobarSesion();
   }, [cerrarSesionLocal]);
 
-  const login = async (email, password) => {
+  const login = async (nombreUsuario, password) => {
     try {
       setError('');
-      const { data } = await loginApi({ email, password });
+      const { data } = await loginApi({ usuario: nombreUsuario, password });
 
       // La respuesta pasó de { token, user } a { data: { access_token,
       // refresh_token, usuario } }.
@@ -78,28 +77,6 @@ export const AuthProvider = ({ children }) => {
       return { success: true };
     } catch (err) {
       const message = mensajeDeError(err, 'Error en el login');
-      setError(message);
-      return { success: false, error: message };
-    }
-  };
-
-  /**
-   * El registro público ya NO acepta `rol`: enviarlo devuelve 400. Todo usuario
-   * creado por aquí es `usuario`. Para crear administradores hay que usar la
-   * pantalla de Usuarios siendo admin.
-   */
-  const register = async ({ email, password, nombre }) => {
-    try {
-      setError('');
-      const { data } = await registerApi({ email, password, nombre });
-
-      const { usuario, access_token, refresh_token } = data.data;
-      guardarSesion({ access_token, refresh_token, usuario });
-      setUser(usuario);
-
-      return { success: true };
-    } catch (err) {
-      const message = mensajeDeError(err, 'Error en el registro');
       setError(message);
       return { success: false, error: message };
     }
@@ -140,14 +117,20 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const esAdmin = user?.rol === 'admin';
+
   const value = {
     user,
     loading,
     error,
     isAuthenticated: !!user,
-    isAdmin: user?.rol === 'admin',
+    isAdmin: esAdmin,
+    // Qué módulos ve esta cuenta. Sirve para decidir el menú y las pantallas,
+    // NO para autorizar: eso lo hace el servidor en cada ruta. Esconder un
+    // botón no impide llamar a la API a mano.
+    puedeRecorridos: esAdmin || user?.puede_recorridos === true,
+    puedeRiegos: esAdmin || user?.puede_riegos === true,
     login,
-    register,
     logout,
     updateProfile,
     changePassword,

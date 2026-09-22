@@ -252,7 +252,7 @@ const listaParams = ({ limite = 50, pagina = 1, ...resto } = {}) => ({ params: {
  * AUTENTICACIÓN
  * ───────────────────────────────────────────────────────────────────────────── */
 export const login = (credentials) => api.post('/auth/login', credentials);
-export const register = (userData) => api.post('/auth/register', userData);
+// No hay registro público: las cuentas las crea un administrador en /users.
 export const refreshSession = () => api.post('/auth/refresh', { refresh_token: getRefreshToken() });
 export const logoutApi = () => api.post('/auth/logout', { refresh_token: getRefreshToken() });
 export const logoutAll = () => api.post('/auth/logout-all');

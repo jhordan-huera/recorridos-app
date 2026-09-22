@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import {
-  CircleUser, Mail, Shield, KeyRound, ChevronRight, ChevronLeft,
+  CircleUser, AtSign, Shield, KeyRound, ChevronRight, ChevronLeft,
   Bell, Sun, HelpCircle, LogOut, Lock,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -95,7 +95,7 @@ const Profile = () => {
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   const [formData, setFormData] = useState({
-    nombre: '', email: '', passwordActual: '', password: '', confirmPassword: '',
+    nombre: '', usuario: '', passwordActual: '', password: '', confirmPassword: '',
   });
   const [displayName, setDisplayName] = useState('');
 
@@ -106,13 +106,13 @@ const Profile = () => {
         const response = await getCurrentUser();
         const userData = response.data.data;
         const name = extractName(userData) || '';
-        setFormData((prev) => ({ ...prev, nombre: name, email: userData.email || '' }));
+        setFormData((prev) => ({ ...prev, nombre: name, usuario: userData.usuario || '' }));
         setDisplayName(name);
       } catch {
         // Sin conexión con el servidor caemos a lo que ya tenemos en sesión.
         if (user) {
           const name = extractName(user) || '';
-          setFormData((prev) => ({ ...prev, nombre: name, email: user.email || '' }));
+          setFormData((prev) => ({ ...prev, nombre: name, usuario: user.usuario || '' }));
           setDisplayName(name);
         }
       } finally {
@@ -129,7 +129,7 @@ const Profile = () => {
   const handleSubmitPerfil = async (event) => {
     event.preventDefault();
     setLoading(true);
-    const resultado = await updateProfile({ nombre: formData.nombre, email: formData.email });
+    const resultado = await updateProfile({ nombre: formData.nombre, usuario: formData.usuario });
     setLoading(false);
 
     if (resultado.success) {
@@ -209,8 +209,9 @@ const Profile = () => {
                   value={formData.nombre} onChange={handleChange} required
                 />
                 <Input
-                  label="Correo electrónico" name="email" type="email" icon={Mail}
-                  value={formData.email} onChange={handleChange} required
+                  label="Usuario" name="usuario" type="text" icon={AtSign}
+                  autoCapitalize="none" spellCheck={false}
+                  value={formData.usuario} onChange={handleChange} required minLength={3}
                 />
                 <Button type="submit" loading={loading} className="w-full">
                   Guardar cambios
@@ -277,7 +278,7 @@ const Profile = () => {
                 {initial}
               </span>
               <h1 className="text-title2 font-semibold text-label">{displayName || 'Usuario'}</h1>
-              <p className="mt-0.5 text-subhead text-label-secondary">{formData.email}</p>
+              <p className="mt-0.5 text-subhead text-label-secondary">{formData.usuario}</p>
             </div>
 
             <SettingGroup title="Cuenta">

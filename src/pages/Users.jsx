@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { Plus, RefreshCw, Users as UsersIcon, ShieldCheck, Pencil, KeyRound, Trash2, AlertTriangle } from 'lucide-react';
+import {
+  Plus, RefreshCw, Users as UsersIcon, ShieldCheck, Pencil, KeyRound, Trash2,
+  AlertTriangle, Route as RouteIcon, Droplets,
+} from 'lucide-react';
 import {
   deleteUser, createUser, updateUser, getAllUsers, resetUserPassword, mensajeDeError, fueBien, mensajeDeRespuesta,
 } from '../services/api';
@@ -11,6 +14,7 @@ import Modal from '../components/ui/Modal';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import Select from '../components/ui/Select';
+import Switch from '../components/ui/Switch';
 import Card from '../components/ui/Card';
 import Badge from '../components/ui/Badge';
 import Skeleton from '../components/ui/Skeleton';
@@ -44,8 +48,14 @@ const Users = () => {
   const { showAlert } = useAlert();
   const reduceMotion = useReducedMotion();
 
-  const [createFormData, setCreateFormData] = useState({ nombre: '', email: '', password: '', rol: 'usuario' });
-  const [editFormData, setEditFormData] = useState({ nombre: '', email: '', rol: 'usuario' });
+  const FORM_CREAR_VACIO = {
+    nombre: '', usuario: '', password: '', rol: 'usuario',
+    puede_recorridos: true, puede_riegos: true,
+  };
+  const [createFormData, setCreateFormData] = useState(FORM_CREAR_VACIO);
+  const [editFormData, setEditFormData] = useState({
+    nombre: '', usuario: '', rol: 'usuario', puede_recorridos: true, puede_riegos: true,
+  });
   const [passwordFormData, setPasswordFormData] = useState({ newPassword: '' });
 
   useEffect(() => {
@@ -91,7 +101,7 @@ const Users = () => {
 
   const handleCreateUser = async (event) => {
     event.preventDefault();
-    if (!createFormData.nombre || !createFormData.email || !createFormData.password) {
+    if (!createFormData.nombre || !createFormData.usuario || !createFormData.password) {
       showAlert('warning', 'Completa todos los campos obligatorios');
       return;
     }
@@ -105,7 +115,7 @@ const Users = () => {
       const response = await createUser(createFormData);
       if (fueBien(response)) {
         setShowCreateForm(false);
-        setCreateFormData({ nombre: '', email: '', password: '', rol: 'usuario' });
+        setCreateFormData(FORM_CREAR_VACIO);
         await loadUsers();
         showAlert('success', 'Usuario registrado');
       } else {
@@ -120,7 +130,7 @@ const Users = () => {
 
   const handleEditUser = async (event) => {
     event.preventDefault();
-    if (!editFormData.nombre || !editFormData.email) {
+    if (!editFormData.nombre || !editFormData.usuario) {
       showAlert('warning', 'El nombre y el correo son obligatorios');
       return;
     }
@@ -170,7 +180,13 @@ const Users = () => {
 
   const openEditForm = (user) => {
     setSelectedUser(user);
-    setEditFormData({ nombre: user.nombre, email: user.email, rol: user.rol });
+    setEditFormData({
+      nombre: user.nombre,
+      usuario: user.usuario,
+      rol: user.rol,
+      puede_recorridos: user.puede_recorridos !== false,
+      puede_riegos: user.puede_riegos !== false,
+    });
     setShowEditForm(true);
   };
 
@@ -190,7 +206,7 @@ const Users = () => {
     const term = searchTerm.trim().toLowerCase();
     if (!term) return usersArray;
     return usersArray.filter((user) =>
-      `${user.nombre} ${user.email}`.toLowerCase().includes(term)
+      `${user.nombre} ${user.usuario}`.toLowerCase().includes(term)
     );
   }, [usersArray, searchTerm]);
 
@@ -289,9 +305,25 @@ const Users = () => {
                       <h3 className="truncate text-headline font-semibold text-label" title={user.nombre}>
                         {user.nombre}
                       </h3>
-                      <p className="truncate text-footnote text-label-secondary" title={user.email}>
-                        {user.email}
+                      <p className="truncate text-footnote text-label-secondary" title={user.usuario}>
+                        {user.usuario}
                       </p>
+
+                      {/* Qué puede abrir esta cuenta, de un vistazo. Un admin
+                          entra a todo, así que no se le listan módulos. */}
+                      <div className="mt-3 flex flex-wrap gap-1.5">
+                        {user.rol === 'admin' ? (
+                          <Badge tone="neutral">Acceso completo</Badge>
+                        ) : (
+                          <>
+                            {user.puede_recorridos !== false && <Badge tone="accent">Recorridos</Badge>}
+                            {user.puede_riegos !== false && <Badge tone="info">Riegos</Badge>}
+                            {user.puede_recorridos === false && user.puede_riegos === false && (
+                              <Badge tone="critical">Sin acceso</Badge>
+                            )}
+                          </>
+                        )}
+                      </div>
 
                       {isSelf && (
                         <p className="mt-3 text-caption text-label-tertiary">Esta es tu cuenta</p>
@@ -364,10 +396,12 @@ const Users = () => {
             required autoFocus
           />
           <Input
-            label="Correo electrónico" type="email" placeholder="ana@empresa.com"
-            value={createFormData.email}
-            onChange={(event) => setCreateFormData({ ...createFormData, email: event.target.value })}
-            required
+            label="Usuario" type="text" placeholder="ana.garcia"
+            autoCapitalize="none" spellCheck={false}
+            value={createFormData.usuario}
+            onChange={(event) => setCreateFormData({ ...createFormData, usuario: event.target.value })}
+            required minLength={3}
+            hint="Con lo que entrará. No hace falta que sea un correo."
           />
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Input
@@ -384,6 +418,42 @@ const Users = () => {
               <option value="admin">Administrador</option>
             </Select>
           </div>
+
+          {/* Permisos. Un administrador entra a todo por definición, así que
+              los interruptores se apagan visualmente en lugar de mentir
+              diciendo que se le puede cerrar un módulo. */}
+          <fieldset className="space-y-2.5">
+            <legend className="mb-2 text-footnote font-medium text-label-secondary">
+              Qué puede usar
+            </legend>
+            {createFormData.rol === 'admin' ? (
+              <p className="rounded-control border border-separator/50 bg-surface-secondary p-3.5 text-footnote text-label-secondary">
+                Un administrador entra a todos los módulos y además gestiona las cuentas.
+              </p>
+            ) : (
+              <>
+                <Switch
+                  icon={RouteIcon}
+                  label="Recorridos"
+                  description="Incluye estudiantes y vehículos"
+                  checked={createFormData.puede_recorridos}
+                  onChange={(valor) => setCreateFormData({ ...createFormData, puede_recorridos: valor })}
+                />
+                <Switch
+                  icon={Droplets}
+                  label="Riegos"
+                  description="Registro de riegos de césped"
+                  checked={createFormData.puede_riegos}
+                  onChange={(valor) => setCreateFormData({ ...createFormData, puede_riegos: valor })}
+                />
+                {!createFormData.puede_recorridos && !createFormData.puede_riegos && (
+                  <p className="text-footnote text-caution">
+                    Sin ningún módulo, la cuenta solo podrá ver su perfil.
+                  </p>
+                )}
+              </>
+            )}
+          </fieldset>
         </form>
       </Modal>
 
@@ -407,9 +477,10 @@ const Users = () => {
             required autoFocus
           />
           <Input
-            label="Correo electrónico" type="email" value={editFormData.email}
-            onChange={(event) => setEditFormData({ ...editFormData, email: event.target.value })}
-            required
+            label="Usuario" type="text" value={editFormData.usuario}
+            autoCapitalize="none" spellCheck={false}
+            onChange={(event) => setEditFormData({ ...editFormData, usuario: event.target.value })}
+            required minLength={3}
           />
           <Select
             label="Rol" value={editFormData.rol}
@@ -418,6 +489,42 @@ const Users = () => {
             <option value="usuario">Usuario</option>
             <option value="admin">Administrador</option>
           </Select>
+
+          {/* Permisos. Un administrador entra a todo por definición, así que
+              los interruptores se apagan visualmente en lugar de mentir
+              diciendo que se le puede cerrar un módulo. */}
+          <fieldset className="space-y-2.5">
+            <legend className="mb-2 text-footnote font-medium text-label-secondary">
+              Qué puede usar
+            </legend>
+            {editFormData.rol === 'admin' ? (
+              <p className="rounded-control border border-separator/50 bg-surface-secondary p-3.5 text-footnote text-label-secondary">
+                Un administrador entra a todos los módulos y además gestiona las cuentas.
+              </p>
+            ) : (
+              <>
+                <Switch
+                  icon={RouteIcon}
+                  label="Recorridos"
+                  description="Incluye estudiantes y vehículos"
+                  checked={editFormData.puede_recorridos}
+                  onChange={(valor) => setEditFormData({ ...editFormData, puede_recorridos: valor })}
+                />
+                <Switch
+                  icon={Droplets}
+                  label="Riegos"
+                  description="Registro de riegos de césped"
+                  checked={editFormData.puede_riegos}
+                  onChange={(valor) => setEditFormData({ ...editFormData, puede_riegos: valor })}
+                />
+                {!editFormData.puede_recorridos && !editFormData.puede_riegos && (
+                  <p className="text-footnote text-caution">
+                    Sin ningún módulo, la cuenta solo podrá ver su perfil.
+                  </p>
+                )}
+              </>
+            )}
+          </fieldset>
         </form>
       </Modal>
 

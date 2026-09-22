@@ -1,17 +1,19 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
 import {
-  Users, Route as RouteIcon, Calendar as CalendarIcon, FileText,
-  ChevronLeft, ChevronRight, Clock, Trash2, Plus, DollarSign,
+  Users, Route as RouteIcon, Calendar as CalendarIcon,
+  ChevronLeft, ChevronRight, Clock, Trash2, Plus, DollarSign, Droplets, FileDown,
 } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useAlert } from '../context/AlertContext';
 import { useAuth } from '../context/AuthContext';
 import { generarReportePdf } from '../lib/reportePdf';
+import { generarReporteRiegosPdf } from '../lib/reporteRiegosPdf.js';
 import { useApp } from '../context/AppContext';
 import {
   createRecorrido, updateRecorrido, deleteRecorrido,
-  getAllRecorridos, getAllNinos, getAllVehiculos, mensajeDeError, fueBien, mensajeDeRespuesta,
+  getAllRecorridos, getAllNinos, getAllVehiculos, getAllRiegos,
+  mensajeDeError, fueBien, mensajeDeRespuesta,
 } from '../services/api';
 import Modal from '../components/ui/Modal';
 import ConfirmModal from '../components/ui/ConfirmModal';
@@ -23,17 +25,23 @@ import Badge from '../components/ui/Badge';
 import Skeleton from '../components/ui/Skeleton';
 import PageHeader from '../components/ui/PageHeader';
 import StatCard from '../components/ui/StatCard';
+import CalendarioMes from '../components/ui/CalendarioMes';
+import RiegoModal from '../components/RiegoModal';
+import { MESES as nombresMeses, rangoDelMes, diaDeFecha, hoyISO, horaActual } from '../lib/fechas';
 import { springSnappy, haptics } from '../lib/motion';
 
-const nombresMeses = [
-  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
-  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
-];
-
-const diasSemana = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+const dinero = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
 
 const tipoTone = { traer: 'positive', llevar: 'caution', ambos: 'accent' };
 const tipoLabel = { traer: 'Traer', llevar: 'Llevar', ambos: 'Ambos' };
+
+/** Leyenda del cronograma: un color por cada cosa que se pinta en una casilla. */
+const LEYENDA = [
+  { color: 'bg-positive', texto: 'Traer', modulo: 'recorridos' },
+  { color: 'bg-caution', texto: 'Llevar', modulo: 'recorridos' },
+  { color: 'bg-accent', texto: 'Ambos', modulo: 'recorridos' },
+  { color: 'bg-info', texto: 'Riego', modulo: 'riegos' },
+];
 
 /**
  * Paleta del gráfico.
@@ -47,16 +55,6 @@ const tipoLabel = { traer: 'Traer', llevar: 'Llevar', ambos: 'Ambos' };
 const chartPalette = {
   light: { actual: '#007AFF', anterior: '#C2410C' },
   dark: { actual: '#0A84FF', anterior: '#E06C15' },
-};
-
-const obtenerFechaActual = () => {
-  const ahora = new Date();
-  return `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, '0')}-${String(ahora.getDate()).padStart(2, '0')}`;
-};
-
-const obtenerHoraActual = () => {
-  const ahora = new Date();
-  return `${String(ahora.getHours()).padStart(2, '0')}:${String(ahora.getMinutes()).padStart(2, '0')}`;
 };
 
 const formatearHora = (hora) => {
@@ -188,7 +186,7 @@ const EsqueletoActividad = () => (
 
 const Dashboard = () => {
   const { showAlert } = useAlert();
-  const { user } = useAuth();
+  const { user, puedeRecorridos, puedeRiegos } = useAuth();
   const { resolvedTheme } = useApp();
   const reduceMotion = useReducedMotion();
   const colors = chartPalette[resolvedTheme] || chartPalette.light;
@@ -208,10 +206,15 @@ const Dashboard = () => {
   const [anioActual, setAnioActual] = useState(new Date().getFullYear());
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [recorridoAEliminar, setRecorridoAEliminar] = useState(null);
+  const [riegosMensuales, setRiegosMensuales] = useState({});
+  const [loadingRiegos, setLoadingRiegos] = useState(true);
+  const [modalRiego, setModalRiego] = useState(false);
+  // Se incrementa tras registrar un riego para que el efecto vuelva a pedirlos.
+  const [refrescoRiegos, setRefrescoRiegos] = useState(0);
 
   const [formData, setFormData] = useState({
-    fecha: obtenerFechaActual(),
-    hora_inicio: obtenerHoraActual(),
+    fecha: hoyISO(),
+    hora_inicio: horaActual(),
     vehiculo_id: '',
     tipo_recorrido: 'traer',
     notas: '',
@@ -298,6 +301,13 @@ const Dashboard = () => {
   useEffect(() => {
     const loadDashboardData = async () => {
       setLoading(true);
+      // Sin el permiso no se piden: el servidor responderia 403 y la pantalla
+      // se llenaría de errores por algo que ya sabíamos de antemano.
+      if (!puedeRecorridos) {
+        procesarRecorridos([]);
+        return;
+      }
+
       try {
         const [recorridos, ninosData, vehiculosData] = await Promise.all([
           getAllRecorridos(), getAllNinos(), getAllVehiculos(),
@@ -314,45 +324,78 @@ const Dashboard = () => {
 
     loadDashboardData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mesActual, anioActual]);
+  }, [mesActual, anioActual, puedeRecorridos]);
 
-  const { diasConRecorridos, totalRecorridosMes, costoTotalMes } = useMemo(() => {
+  /* Los riegos se piden en su propia llamada a propósito: si esa falla, el
+     resumen de recorridos se sigue viendo en lugar de quedarse en blanco. */
+  useEffect(() => {
+    let cancelado = false;
+
+    const cargarRiegos = async () => {
+      if (!puedeRiegos) {
+        setRiegosMensuales({});
+        setLoadingRiegos(false);
+        return;
+      }
+
+      setLoadingRiegos(true);
+      try {
+        const datos = await getAllRiegos(rangoDelMes(mesActual, anioActual));
+        if (cancelado) return;
+
+        const porDia = {};
+        (Array.isArray(datos) ? datos : []).forEach((riego) => {
+          const dia = diaDeFecha(riego?.fecha);
+          if (dia) (porDia[dia] ??= []).push(riego);
+        });
+        Object.values(porDia).forEach((lista) => {
+          lista.sort((a, b) => String(a.hora).localeCompare(String(b.hora)));
+        });
+
+        setRiegosMensuales(porDia);
+      } catch (error) {
+        if (cancelado) return;
+        setRiegosMensuales({});
+        showAlert('error', 'No se pudieron cargar los riegos: ' + mensajeDeError(error));
+      } finally {
+        if (!cancelado) setLoadingRiegos(false);
+      }
+    };
+
+    cargarRiegos();
+    // Al cambiar de mes, la respuesta que iba en camino ya no vale.
+    return () => { cancelado = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mesActual, anioActual, refrescoRiegos, puedeRiegos]);
+
+  const { diasConRecorridos, totalRecorridosMes, costoRecorridos } = useMemo(() => {
     const allRecorridos = Object.values(recorridosMensuales).flat();
     return {
       totalRecorridosMes: allRecorridos.length,
       diasConRecorridos: Object.keys(recorridosMensuales).length,
-      costoTotalMes: allRecorridos.reduce((acc, r) => acc + (parseFloat(r.costo || '0') || 0), 0),
+      costoRecorridos: allRecorridos.reduce((acc, r) => acc + (parseFloat(r.costo || '0') || 0), 0),
     };
   }, [recorridosMensuales]);
 
-  const matrizCalendario = useMemo(() => {
-    const primerDia = new Date(anioActual, mesActual - 1, 1).getDay();
-    const diasEnElMes = new Date(anioActual, mesActual, 0).getDate();
-    const matriz = [];
-    let dia = 1;
+  const { totalRiegosMes, costoRiegos, diasConRiegos } = useMemo(() => {
+    const todos = Object.values(riegosMensuales).flat();
+    return {
+      totalRiegosMes: todos.length,
+      diasConRiegos: Object.keys(riegosMensuales).length,
+      costoRiegos: todos.reduce((acc, r) => acc + (parseFloat(r.costo || '0') || 0), 0),
+    };
+  }, [riegosMensuales]);
 
-    const offset = primerDia === 0 ? 6 : primerDia - 1;
-    let fila = Array(offset).fill(null);
-    const hoy = new Date();
+  const gastoTotalMes = costoRecorridos + costoRiegos;
+  const cargando = loading || loadingRiegos;
 
-    while (dia <= diasEnElMes) {
-      if (fila.length === 7) {
-        matriz.push(fila);
-        fila = [];
-      }
-      fila.push({
-        numero: dia,
-        esHoy: dia === hoy.getDate()
-          && mesActual === hoy.getMonth() + 1
-          && anioActual === hoy.getFullYear(),
-      });
-      dia += 1;
-    }
-
-    while (fila.length < 7) fila.push(null);
-    if (fila.length > 0) matriz.push(fila);
-    return matriz;
-  }, [mesActual, anioActual]);
+  /** Días del mes con algo registrado, venga de donde venga. */
+  const diasConActividad = useMemo(() => (
+    [...new Set([...Object.keys(recorridosMensuales), ...Object.keys(riegosMensuales)])]
+      .map((dia) => parseInt(dia, 10))
+      .filter((dia) => !Number.isNaN(dia))
+      .sort((a, b) => b - a)
+  ), [recorridosMensuales, riegosMensuales]);
 
   const cambiarMes = (delta) => {
     haptics.tick();
@@ -372,8 +415,8 @@ const Dashboard = () => {
 
   const resetForm = () => {
     setFormData({
-      fecha: obtenerFechaActual(),
-      hora_inicio: obtenerHoraActual(),
+      fecha: hoyISO(),
+      hora_inicio: horaActual(),
       vehiculo_id: '',
       tipo_recorrido: 'traer',
       notas: '',
@@ -489,12 +532,39 @@ const Dashboard = () => {
         recorridos: planos,
         mes: mesActual,
         anio: anioActual,
-        usuario: { nombre: user?.nombre, email: user?.email },
+        usuario: { nombre: user?.nombre, usuario: user?.usuario },
       });
       showAlert('success', 'Estado de cuenta generado');
     } catch (error) {
       console.error(error);
       showAlert('error', 'No se pudo generar el PDF');
+    }
+  };
+
+  /** Los riegos del mes en su propio PDF, con el mismo formato que su pantalla. */
+  const exportarRiegosPDF = async () => {
+    try {
+      const planos = Object.values(riegosMensuales).flat().sort((a, b) => (
+        a.fecha === b.fecha
+          ? String(a.hora).localeCompare(String(b.hora))
+          : String(a.fecha).localeCompare(String(b.fecha))
+      ));
+
+      if (planos.length === 0) {
+        showAlert('warning', 'No hay riegos en este mes para exportar');
+        return;
+      }
+
+      await generarReporteRiegosPdf({
+        riegos: planos,
+        mes: mesActual,
+        anio: anioActual,
+        usuario: { nombre: user?.nombre, usuario: user?.usuario },
+      });
+      showAlert('success', 'Reporte de riegos generado');
+    } catch (error) {
+      console.error(error);
+      showAlert('error', 'No se pudo generar el PDF de riegos');
     }
   };
 
@@ -531,50 +601,95 @@ const Dashboard = () => {
         subtitle="Actividad y gasto del mes"
         actions={
           <>
-            <Button
-              variant="secondary"
-              onClick={exportarPDF}
-              disabled={loading || totalRecorridosMes === 0}
-              icon={<FileText size={16} strokeWidth={2.1} />}
-            >
-              Exportar
-            </Button>
-            <Button onClick={handleOpenModal} icon={<Plus size={17} strokeWidth={2.3} />}>
-              Nuevo recorrido
-            </Button>
+            {/* Cada informe se descarga por separado porque son dos documentos
+                distintos: el estado de cuenta de recorridos y el de riegos.
+                Cada acción aparece solo si la cuenta tiene ese módulo. */}
+            {puedeRecorridos && (
+              <Button
+                variant="secondary"
+                onClick={exportarPDF}
+                disabled={loading || totalRecorridosMes === 0}
+                icon={<FileDown size={16} strokeWidth={2.1} />}
+              >
+                PDF recorridos
+              </Button>
+            )}
+            {puedeRiegos && (
+              <Button
+                variant="secondary"
+                onClick={exportarRiegosPDF}
+                disabled={loadingRiegos || totalRiegosMes === 0}
+                icon={<FileDown size={16} strokeWidth={2.1} />}
+              >
+                PDF riegos
+              </Button>
+            )}
+            {puedeRiegos && (
+              <Button
+                variant="secondary"
+                onClick={() => setModalRiego(true)}
+                icon={<Plus size={17} strokeWidth={2.3} />}
+              >
+                Nuevo riego
+              </Button>
+            )}
+            {puedeRecorridos && (
+              <Button onClick={handleOpenModal} icon={<Plus size={17} strokeWidth={2.3} />}>
+                Nuevo recorrido
+              </Button>
+            )}
           </>
         }
       />
 
-      {/* Cifras */}
-      <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2">
-        {loading ? (
+      {/* Cifras: el gasto suma lo que la cuenta puede ver, que es lo que paga.
+          Con un solo módulo el desglose sobra, porque el total ya es ese. */}
+      <div className={`mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 ${
+        puedeRecorridos && puedeRiegos ? 'xl:grid-cols-3' : ''
+      }`}>
+        {cargando ? (
           <>
             <EsqueletoCifra />
             <EsqueletoCifra />
+            {puedeRecorridos && puedeRiegos && <EsqueletoCifra />}
           </>
         ) : (
           <>
             <StatCard
               label="Gasto del mes"
-              value={`$${costoTotalMes.toFixed(2)}`}
+              value={dinero.format(gastoTotalMes)}
               icon={DollarSign}
               tone="positive"
-              footnote={`Acumulado en ${nombresMeses[mesActual - 1].toLowerCase()}`}
+              className={puedeRecorridos && puedeRiegos ? 'sm:col-span-2 xl:col-span-1' : ''}
+              footnote={puedeRecorridos && puedeRiegos
+                ? `Recorridos ${dinero.format(costoRecorridos)} · Riegos ${dinero.format(costoRiegos)}`
+                : `Acumulado en ${nombresMeses[mesActual - 1].toLowerCase()}`}
             />
-            <StatCard
-              label="Recorridos"
-              value={totalRecorridosMes}
-              icon={RouteIcon}
-              tone="accent"
-              footnote={`${diasConRecorridos} ${diasConRecorridos === 1 ? 'día' : 'días'} con actividad`}
-            />
+            {puedeRecorridos && (
+              <StatCard
+                label="Recorridos"
+                value={totalRecorridosMes}
+                icon={RouteIcon}
+                tone="accent"
+                footnote={`${diasConRecorridos} ${diasConRecorridos === 1 ? 'día' : 'días'} con actividad`}
+              />
+            )}
+            {puedeRiegos && (
+              <StatCard
+                label="Riegos"
+                value={totalRiegosMes}
+                icon={Droplets}
+                tone="info"
+                footnote={`${diasConRiegos} ${diasConRiegos === 1 ? 'día' : 'días'} con riego`}
+              />
+            )}
           </>
         )}
       </div>
 
-      {/* Gráfico comparativo */}
-      {loading ? <EsqueletoGrafico /> : (
+      {/* Gráfico comparativo. Habla solo de recorridos: sin ese módulo no
+          tendría ninguna serie que pintar. */}
+      {!puedeRecorridos ? null : loading ? <EsqueletoGrafico /> : (
         <Card className="mb-6">
           <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
               <div>
@@ -646,8 +761,8 @@ const Dashboard = () => {
         </Card>
       )}
 
-      {/* Calendario + actividad */}
-      {loading ? (
+      {/* Calendario + actividad: recorridos y riegos sobre el mismo mes */}
+      {cargando ? (
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
           <EsqueletoCalendario />
           <EsqueletoActividad />
@@ -665,57 +780,52 @@ const Dashboard = () => {
               <MonthStepper />
             </div>
 
-            <div className="p-3 sm:p-5">
-              <div className="mb-2 grid grid-cols-7">
-                {diasSemana.map((dia) => (
-                  <div key={dia} className="text-center text-caption font-medium text-label-tertiary">
-                    {dia}
-                  </div>
+            {/* En el móvil la casilla solo tiene puntos de color, así que la
+                leyenda es la única forma de leerlos. Va cada tipo por separado
+                porque los recorridos ya se pintan según sean de traer, llevar
+                o ambos: una sola entrada "Recorridos" mentiría sobre el color. */}
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-separator/40 px-5 py-3">
+              {LEYENDA
+                .filter(({ modulo }) => (modulo === 'riegos' ? puedeRiegos : puedeRecorridos))
+                .map(({ color, texto }) => (
+                  <span key={texto} className="flex items-center gap-1.5 text-footnote text-label-secondary">
+                    <span aria-hidden="true" className={`h-2 w-2 rounded-full ${color}`} />
+                    {texto}
+                  </span>
                 ))}
-              </div>
+            </div>
 
-              <div className="grid grid-cols-7 gap-1 sm:gap-2">
-                {matrizCalendario.flat().map((dia, index) => {
-                  if (!dia) return <div key={`vacio-${index}`} className="h-14 sm:h-24" />;
-
-                  const recorridosDelDia = recorridosMensuales[dia.numero] || [];
+            <div className="p-3 sm:p-5">
+              <CalendarioMes
+                mes={mesActual}
+                anio={anioActual}
+                renderDia={(numero) => {
+                  const recorridosDelDia = recorridosMensuales[numero] || [];
+                  const riegosDelDia = riegosMensuales[numero] || [];
+                  if (recorridosDelDia.length === 0 && riegosDelDia.length === 0) return null;
 
                   return (
-                    <div
-                      key={dia.numero}
-                      className={`flex h-14 flex-col rounded-field border p-1 sm:h-24 sm:rounded-control sm:p-2 ${
-                        dia.esHoy
-                          ? 'border-accent bg-accent/8'
-                          : 'border-separator/50 bg-surface-secondary'
-                      }`}
-                    >
-                      <span
-                        className={`tabular self-end text-caption ${
-                          dia.esHoy
-                            ? 'flex h-5 w-5 items-center justify-center rounded-full bg-accent font-semibold text-white'
-                            : 'px-1 text-label-tertiary'
-                        }`}
-                      >
-                        {dia.numero}
-                      </span>
-
+                    <>
                       {/* Móvil: puntos. Escritorio: las etiquetas completas. */}
                       <div className="mt-auto flex flex-wrap justify-center gap-0.5 sm:hidden">
-                        {recorridosDelDia.slice(0, 4).map((recorrido, i) => (
+                        {recorridosDelDia.slice(0, 3).map((recorrido, i) => (
                           <span
-                            key={i}
+                            key={`recorrido-${i}`}
                             className={`h-1.5 w-1.5 rounded-full ${
                               recorrido.tipo_recorrido === 'traer' ? 'bg-positive'
                                 : recorrido.tipo_recorrido === 'llevar' ? 'bg-caution' : 'bg-accent'
                             }`}
                           />
                         ))}
+                        {riegosDelDia.slice(0, 2).map((riego, i) => (
+                          <span key={`riego-${i}`} className="h-1.5 w-1.5 rounded-full bg-info" />
+                        ))}
                       </div>
 
                       <div className="scroll-area mt-1 hidden flex-1 space-y-1 sm:block">
                         {recorridosDelDia.map((recorrido, i) => (
                           <p
-                            key={i}
+                            key={`recorrido-${i}`}
                             title={recorrido.vehiculo_descripcion}
                             className={`truncate rounded px-1.5 py-0.5 text-caption2 font-medium ${
                               recorrido.tipo_recorrido === 'traer' ? 'bg-positive/14 text-positive'
@@ -726,11 +836,23 @@ const Dashboard = () => {
                             {recorrido.vehiculo_descripcion || 'Sin unidad'}
                           </p>
                         ))}
+                        {riegosDelDia.map((riego, i) => (
+                          <p
+                            key={`riego-${i}`}
+                            className="tabular truncate rounded bg-info/12 px-1.5 py-0.5 text-caption2 font-medium text-info"
+                          >
+                            Riego {formatearHora(riego.hora)}
+                          </p>
+                        ))}
                       </div>
-                    </div>
+
+                      <span className="sr-only">
+                        {recorridosDelDia.length} recorridos, {riegosDelDia.length} riegos
+                      </span>
+                    </>
                   );
-                })}
-              </div>
+                }}
+              />
             </div>
           </Card>
 
@@ -742,61 +864,83 @@ const Dashboard = () => {
             </div>
 
             <div className="scroll-area flex-1 space-y-5 p-4">
-              {Object.keys(recorridosMensuales).length > 0 ? (
-                Object.keys(recorridosMensuales)
-                  .filter((dia) => !Number.isNaN(parseInt(dia, 10)))
-                  .sort((a, b) => parseInt(b, 10) - parseInt(a, 10))
-                  .map((dia) => (
-                    <section key={dia}>
-                      <h3 className="mb-2 px-1 text-footnote font-medium text-label-secondary">
-                        {dia} de {nombresMeses[mesActual - 1].toLowerCase()}
-                      </h3>
+              {diasConActividad.length > 0 ? (
+                diasConActividad.map((dia) => (
+                  <section key={dia}>
+                    <h3 className="mb-2 px-1 text-footnote font-medium text-label-secondary">
+                      {dia} de {nombresMeses[mesActual - 1].toLowerCase()}
+                    </h3>
 
-                      <div className="space-y-2">
-                        {recorridosMensuales[dia].map((recorrido, index) => {
-                          const totalPasajeros = recorrido.total_ninos !== undefined
-                            ? recorrido.total_ninos
-                            : (recorrido.ninos?.length || 0);
+                    <div className="space-y-2">
+                      {(recorridosMensuales[dia] || []).map((recorrido, index) => {
+                        const totalPasajeros = recorrido.total_ninos !== undefined
+                          ? recorrido.total_ninos
+                          : (recorrido.ninos?.length || 0);
 
-                          return (
-                            <div
-                              key={index}
-                              className="rounded-control border border-separator/50 bg-surface-secondary p-3"
-                            >
-                              <div className="mb-2 flex items-center justify-between gap-2">
-                                <Badge tone={tipoTone[recorrido.tipo_recorrido] || 'neutral'}>
-                                  {tipoLabel[recorrido.tipo_recorrido] || recorrido.tipo_recorrido}
-                                </Badge>
-                                <span className="tabular flex items-center gap-1 text-footnote text-label-tertiary">
-                                  <Clock size={12} strokeWidth={2.2} />
-                                  {formatearHora(recorrido.hora_inicio)}
-                                </span>
-                              </div>
-
-                              <p className="truncate text-subhead font-medium text-label">
-                                {recorrido.vehiculo_descripcion || 'Sin unidad'}
-                              </p>
-
-                              <div className="mt-2.5 flex items-center justify-between border-t border-separator/40 pt-2.5">
-                                <span className="flex items-center gap-1.5 text-footnote text-label-secondary">
-                                  <Users size={13} strokeWidth={2.1} className="text-label-tertiary" />
-                                  {totalPasajeros} {totalPasajeros === 1 ? 'pasajero' : 'pasajeros'}
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() => { setRecorridoAEliminar(recorrido.id); setShowDeleteModal(true); }}
-                                  aria-label="Eliminar recorrido"
-                                  className="tappable rounded-full p-1.5 text-label-tertiary transition-colors hover:bg-critical/12 hover:text-critical"
-                                >
-                                  <Trash2 size={14} strokeWidth={2} />
-                                </button>
-                              </div>
+                        return (
+                          <div
+                            key={`recorrido-${index}`}
+                            className="rounded-control border border-separator/50 bg-surface-secondary p-3"
+                          >
+                            <div className="mb-2 flex items-center justify-between gap-2">
+                              <Badge tone={tipoTone[recorrido.tipo_recorrido] || 'neutral'}>
+                                {tipoLabel[recorrido.tipo_recorrido] || recorrido.tipo_recorrido}
+                              </Badge>
+                              <span className="tabular flex items-center gap-1 text-footnote text-label-tertiary">
+                                <Clock size={12} strokeWidth={2.2} />
+                                {formatearHora(recorrido.hora_inicio)}
+                              </span>
                             </div>
-                          );
-                        })}
-                      </div>
-                    </section>
-                  ))
+
+                            <p className="truncate text-subhead font-medium text-label">
+                              {recorrido.vehiculo_descripcion || 'Sin unidad'}
+                            </p>
+
+                            <div className="mt-2.5 flex items-center justify-between border-t border-separator/40 pt-2.5">
+                              <span className="flex items-center gap-1.5 text-footnote text-label-secondary">
+                                <Users size={13} strokeWidth={2.1} className="text-label-tertiary" />
+                                {totalPasajeros} {totalPasajeros === 1 ? 'pasajero' : 'pasajeros'}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => { setRecorridoAEliminar(recorrido.id); setShowDeleteModal(true); }}
+                                aria-label="Eliminar recorrido"
+                                className="tappable rounded-full p-1.5 text-label-tertiary transition-colors hover:bg-critical/12 hover:text-critical"
+                              >
+                                <Trash2 size={14} strokeWidth={2} />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+
+                      {/* Los riegos se ven aquí, pero se editan en su pantalla:
+                          un mismo registro con dos sitios donde tocarlo acaba
+                          en dos comportamientos distintos. */}
+                      {(riegosMensuales[dia] || []).map((riego, index) => (
+                        <div
+                          key={`riego-${index}`}
+                          className="flex items-center justify-between gap-2 rounded-control border border-separator/50 bg-surface-secondary p-3"
+                        >
+                          <div className="flex min-w-0 items-center gap-2.5">
+                            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-field bg-info/14 text-info">
+                              <Droplets size={15} strokeWidth={2} />
+                            </span>
+                            <div className="min-w-0">
+                              <p className="text-subhead font-medium text-label">Riego</p>
+                              <p className="tabular text-footnote text-label-tertiary">
+                                {formatearHora(riego.hora)}
+                              </p>
+                            </div>
+                          </div>
+                          <span className="tabular shrink-0 text-subhead font-medium text-label">
+                            {dinero.format(parseFloat(riego.costo) || 0)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                ))
               ) : (
                 <div className="flex h-full flex-col items-center justify-center text-center">
                   <span className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-fill/10 text-label-tertiary">
@@ -912,6 +1056,12 @@ const Dashboard = () => {
         message="Este registro se borrará de forma permanente. No se puede deshacer."
         confirmText="Eliminar"
         type="danger"
+      />
+
+      <RiegoModal
+        abierto={modalRiego}
+        onCerrar={() => setModalRiego(false)}
+        onGuardado={() => setRefrescoRiegos((n) => n + 1)}
       />
     </div>
   );

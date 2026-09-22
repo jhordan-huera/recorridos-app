@@ -1,33 +1,39 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, useReducedMotion } from 'motion/react';
-import { Mail, Lock, ArrowRight, Route, AlertCircle, Eye, EyeOff } from 'lucide-react';
+import { AtSign, Lock, ArrowRight, Route, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { rutaDeInicio } from '../lib/navegacion';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import ThemeToggle from '../components/ui/ThemeToggle';
 import { crossFade, springSheet } from '../lib/motion';
 
 const Login = () => {
-  const [email, setEmail] = useState('');
+  const [usuario, setUsuario] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [touched, setTouched] = useState({ email: false, password: false });
+  const [touched, setTouched] = useState({ usuario: false, password: false });
 
-  const { login, user, error, setError } = useAuth();
+  const { login, user, error, setError, puedeRecorridos, puedeRiegos } = useAuth();
+  const inicio = rutaDeInicio({ puedeRecorridos, puedeRiegos });
   const navigate = useNavigate();
   const reduceMotion = useReducedMotion();
 
   useEffect(() => {
-    if (user) navigate('/dashboard');
+    if (user) navigate(inicio);
     setError('');
-  }, [user, navigate, setError]);
+  }, [user, navigate, setError, inicio]);
 
   // Validación en línea: se avisa en cuanto el campo se ha visitado, no al
   // enviar. Antes de tocarlo no se regaña a nadie por algo que aún no hizo.
-  const emailError = touched.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
-    ? 'Introduce un correo válido'
+  //
+  // Ya no se exige forma de correo: las cuentas las crea el administrador y el
+  // nombre de usuario puede ser cualquier cosa. Solo se comprueba que no esté
+  // vacío; si no existe, lo dice el servidor.
+  const usuarioError = touched.usuario && usuario.trim().length === 0
+    ? 'Introduce tu usuario'
     : undefined;
   const passwordError = touched.password && password.length === 0
     ? 'Introduce tu contraseña'
@@ -35,14 +41,16 @@ const Login = () => {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    setTouched({ email: true, password: true });
-    if (emailError || !email || !password) return;
+    setTouched({ usuario: true, password: true });
+    if (!usuario.trim() || !password) return;
 
     setError('');
     setIsLoading(true);
-    const result = await login(email, password);
+    const result = await login(usuario.trim(), password);
     setIsLoading(false);
-    if (result.success) navigate('/dashboard');
+    // La navegación real la hace el efecto de arriba, que ya conoce los
+    // permisos de la cuenta recién cargada.
+    if (result.success) navigate(inicio);
   };
 
   return (
@@ -85,15 +93,17 @@ const Login = () => {
 
           <form onSubmit={handleSubmit} className="space-y-4" noValidate>
             <Input
-              label="Correo electrónico"
-              type="email"
-              autoComplete="email"
-              icon={Mail}
-              value={email}
-              error={emailError}
-              onChange={(event) => setEmail(event.target.value)}
-              onBlur={() => setTouched((state) => ({ ...state, email: true }))}
-              placeholder="nombre@empresa.com"
+              label="Usuario"
+              type="text"
+              autoComplete="username"
+              autoCapitalize="none"
+              spellCheck={false}
+              icon={AtSign}
+              value={usuario}
+              error={usuarioError}
+              onChange={(event) => setUsuario(event.target.value)}
+              onBlur={() => setTouched((state) => ({ ...state, usuario: true }))}
+              placeholder="tu usuario"
               required
             />
 
