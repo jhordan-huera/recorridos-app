@@ -91,13 +91,23 @@ const Login = () => {
             </motion.div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+          {/* autoComplete="off" en el formulario y en el campo: sin esto el
+              navegador ofrece los usuarios ya escritos en un desplegable, y
+              eso enseña quién usa la aplicación a cualquiera que abra el
+              login en ese equipo. */}
+          <form onSubmit={handleSubmit} className="space-y-4" noValidate autoComplete="off">
             <Input
               label="Usuario"
               type="text"
-              autoComplete="username"
+              name="acceso"
+              autoComplete="off"
               autoCapitalize="none"
               spellCheck={false}
+              // Los gestores de contraseñas tienen su propia marca para
+              // saltarse un campo; autoComplete por sí solo no les basta.
+              data-1p-ignore
+              data-lpignore="true"
+              data-form-type="other"
               icon={AtSign}
               value={usuario}
               error={usuarioError}
