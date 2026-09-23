@@ -3,9 +3,9 @@ import { motion, useReducedMotion } from 'motion/react';
 import {
   Users, Route as RouteIcon, Calendar as CalendarIcon,
   ChevronLeft, ChevronRight, Clock, Trash2, Plus, Droplets, FileDown,
-  TrendingUp, TrendingDown, HandCoins,
+  TrendingUp, HandCoins, Wallet, CalendarCheck, PieChart, BarChart3,
 } from 'lucide-react';
-import { BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { Link } from 'react-router-dom';
 import { useAlert } from '../context/AlertContext';
 import { useAuth } from '../context/AuthContext';
 import { generarReportePdf } from '../lib/reportePdf';
@@ -26,9 +26,14 @@ import Input from '../components/ui/Input';
 import Select from '../components/ui/Select';
 import Badge from '../components/ui/Badge';
 import Skeleton from '../components/ui/Skeleton';
-import PageHeader from '../components/ui/PageHeader';
 import CalendarioMes from '../components/ui/CalendarioMes';
 import RiegoModal from '../components/RiegoModal';
+import Kpi from '../components/resumen/Kpi';
+import Aviso from '../components/resumen/Aviso';
+import TarjetaVehiculo from '../components/resumen/TarjetaVehiculo';
+import GraficoMeses from '../components/resumen/GraficoMeses';
+import BurbujasTipos from '../components/resumen/BurbujasTipos';
+import { PALETA_GRAFICO } from '../components/resumen/paleta';
 import { MESES as nombresMeses, rangoDelMes, diaDeFecha, dosDigitos, hoyISO, horaActual } from '../lib/fechas';
 import { springSnappy, haptics } from '../lib/motion';
 
@@ -66,6 +71,43 @@ const agruparPorDia = (registros, clave, campoHora) => {
   return porDia;
 };
 
+/**
+ * Tendencia de una cuenta (recorridos, riegos, días) frente al mes anterior.
+ * Se da en unidades y no en porcentaje: "+3" se entiende; "+42 %" sobre siete
+ * recorridos exagera lo que en realidad son tres.
+ */
+const tendenciaDeCuenta = (actual, anterior, mesAnterior) => {
+  const delta = actual - anterior;
+  return {
+    texto: delta === 0 ? 'Igual' : `${delta > 0 ? '+' : '−'}${Math.abs(delta)}`,
+    direccion: delta > 0 ? 'sube' : delta < 0 ? 'baja' : 'igual',
+    bueno: delta > 0,
+    contra: `vs ${mesAnterior}`,
+  };
+};
+
+/**
+ * Tendencia del gasto, en porcentaje. Aquí subir no es bueno: más gasto se
+ * pinta en naranja, menos en verde.
+ */
+const tendenciaDeGasto = (variacion, mesAnterior) => {
+  if (variacion === null) {
+    return { texto: 'Sin gasto', direccion: 'igual', bueno: false, contra: `en ${mesAnterior}` };
+  }
+  const redondeada = Math.round(variacion);
+  if (redondeada === 0) {
+    return { texto: 'Igual', direccion: 'igual', bueno: false, contra: `vs ${mesAnterior}` };
+  }
+  return {
+    texto: `${redondeada > 0 ? '+' : '−'}${Math.abs(redondeada)}%`,
+    direccion: redondeada > 0 ? 'sube' : 'baja',
+    bueno: redondeada < 0,
+    contra: `vs ${mesAnterior}`,
+  };
+};
+
+const fechaDeHoy = new Intl.DateTimeFormat('es-EC', { day: 'numeric', month: 'short', year: 'numeric' });
+
 /** Rango que cubre el histórico completo, para pedirlo en una sola llamada. */
 const rangoDelHistorial = (mes, anio) => {
   const primero = new Date(anio, mes - 1 - (MESES_DE_HISTORIAL - 1), 1);
@@ -95,11 +137,6 @@ const LEYENDA = [
  * validados contra su superficie (banda de luminosidad, croma, separación bajo
  * daltonismo y contraste).
  */
-const chartPalette = {
-  light: { recorridos: '#007AFF', riegos: '#0082A0', rejilla: '#00000014' },
-  dark: { recorridos: '#0A84FF', riegos: '#40C8E0', rejilla: '#FFFFFF14' },
-};
-
 const formatearHora = (hora) => {
   if (!hora) return '—';
   try {
@@ -114,43 +151,6 @@ const formatearHora = (hora) => {
   }
 };
 
-/** Tooltip con los tokens de superficie, para que se lea igual en ambos temas. */
-const TooltipMeses = ({ active, payload, colors }) => {
-  if (!active || !payload?.length) return null;
-  const mes = payload[0]?.payload;
-  if (!mes) return null;
-
-  const filas = [
-    { clave: 'recorridos', texto: 'Recorridos', color: colors.recorridos },
-    { clave: 'riegos', texto: 'Riegos', color: colors.riegos },
-  ].filter(({ clave }) => payload.some((entrada) => entrada.dataKey === clave));
-
-  return (
-    <div className="rounded-control border border-separator/60 bg-surface px-3 py-2 shadow-level-3">
-      <p className="text-caption text-label-tertiary">{mes.nombre} {mes.anio}</p>
-      <ul className="mt-1.5 space-y-1">
-        {filas.map(({ clave, texto, color }) => (
-          <li key={clave} className="flex items-center gap-2">
-            <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: color }} />
-            <span className="text-footnote text-label-secondary">{texto}</span>
-            <span className="tabular ml-auto text-footnote font-semibold text-label">
-              {dinero.format(mes[clave])}
-            </span>
-          </li>
-        ))}
-        {filas.length > 1 && (
-          <li className="flex items-center gap-2 border-t border-separator/40 pt-1">
-            <span className="text-footnote text-label-secondary">Total</span>
-            <span className="tabular ml-auto text-footnote font-semibold text-label">
-              {dinero.format(mes.total)}
-            </span>
-          </li>
-        )}
-      </ul>
-    </div>
-  );
-};
-
 /**
  * Marcadores de carga.
  *
@@ -159,52 +159,23 @@ const TooltipMeses = ({ active, payload, colors }) => {
  * "el contenido está llegando" y no como "algo se rompió", y cuando los datos
  * entran no hay salto de layout porque el hueco ya medía lo mismo.
  */
-const EsqueletoCifra = () => (
-  <Card className="lg:col-span-5">
-    <Skeleton variant="bare" className="h-3.5 w-28" />
-    <Skeleton variant="bare" className="mt-2 h-9 w-40" />
-    <Skeleton variant="bare" className="mt-2 h-3 w-44" />
-    <div className="mt-5 space-y-3 border-t border-separator/50 pt-4">
-      {[0, 1].map((i) => (
-        <div key={i} className="flex items-center gap-3">
-          <Skeleton variant="bare" className="h-8 w-8 rounded-field" />
-          <div className="flex-1">
-            <Skeleton variant="bare" className="h-3.5 w-24" />
-            <Skeleton variant="bare" className="mt-1.5 h-3 w-20" />
-          </div>
-          <Skeleton variant="bare" className="h-4 w-16" />
-        </div>
-      ))}
+const EsqueletoKpi = () => (
+  <Card className="flex items-center gap-4">
+    <Skeleton variant="bare" className="h-12 w-12 shrink-0 rounded-full" />
+    <div className="flex-1">
+      <Skeleton variant="bare" className="h-3 w-24" />
+      <Skeleton variant="bare" className="mt-2 h-8 w-32" />
     </div>
   </Card>
 );
 
-const EsqueletoGrafico = () => (
-  <Card className="lg:col-span-7">
-    <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
-      <div>
-        <Skeleton variant="bare" className="h-4 w-44" />
-        <Skeleton variant="bare" className="mt-2 h-3 w-56" />
-      </div>
-      <div className="flex items-center gap-4">
-        <Skeleton variant="bare" className="h-3 w-20" />
-        <Skeleton variant="bare" className="h-3 w-24" />
-      </div>
-    </div>
-    {/* Se insinúan los ejes y una silueta de datos, no un bloque macizo. */}
-    {/* Se insinúan los ejes y seis barras, que es lo que va a llegar, en vez
-        de un bloque gris que no dice nada de la forma del contenido. */}
-    <div className="flex h-[220px] gap-3">
-      <div className="flex w-10 flex-col justify-between py-1">
-        {[...Array(5)].map((_, i) => <Skeleton key={i} variant="bare" className="h-2.5 w-full" />)}
-      </div>
-      <div className="flex flex-1 items-end gap-5 border-b border-l border-separator/50 px-3 pb-2">
-        {[42, 68, 35, 80, 58, 72].map((alto, i) => (
-          <Skeleton key={i} variant="bare" className="flex-1 rounded-t-md" style={{ height: `${alto}%` }} />
-        ))}
-      </div>
-    </div>
-  </Card>
+/** Silueta del gráfico: la forma de lo que va a llegar, no un bloque gris. */
+const EsqueletoBarras = ({ alto = 'h-[230px]' }) => (
+  <div className={`flex ${alto} items-end gap-4 px-2`}>
+    {[46, 70, 38, 84, 60, 74].map((altura, i) => (
+      <Skeleton key={i} variant="bare" className="flex-1 rounded-full" style={{ height: `${altura}%` }} />
+    ))}
+  </div>
 );
 
 const EsqueletoCalendario = () => (
@@ -253,7 +224,7 @@ const Dashboard = () => {
   const { user, puedeRecorridos, puedeRiegos } = useAuth();
   const { resolvedTheme } = useApp();
   const reduceMotion = useReducedMotion();
-  const colors = chartPalette[resolvedTheme] || chartPalette.light;
+  const colors = PALETA_GRAFICO[resolvedTheme] || PALETA_GRAFICO.light;
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editando, setEditando] = useState(false);
@@ -714,12 +685,95 @@ const Dashboard = () => {
     (n) => !ninosSeleccionados.some((sel) => sel.nino_id?.toString() === n.id?.toString())
   );
 
+  /* ── Cifras del tablero ─────────────────────────────────────────────────── */
+  const mesAnterior = resumenMeses.at(-2);
+  const nombreMesAnterior = mesAnterior?.nombre.toLowerCase() ?? 'el mes anterior';
+
+  /** Lo mismo del mes anterior, para que cada cifra diga si sube o baja. */
+  const { recorridosAnterior, riegosAnterior, diasAnterior } = useMemo(() => {
+    const clave = mesAnterior?.clave;
+    if (!clave) return { recorridosAnterior: 0, riegosAnterior: 0, diasAnterior: 0 };
+    const recorridos = puedeRecorridos ? recorridosTodos.filter((r) => claveDeMes(r?.fecha) === clave) : [];
+    const riegos = puedeRiegos ? riegosRango.filter((r) => claveDeMes(r?.fecha) === clave) : [];
+    return {
+      recorridosAnterior: recorridos.length,
+      riegosAnterior: riegos.length,
+      diasAnterior: new Set([...recorridos, ...riegos].map((r) => diaDeFecha(r.fecha))).size,
+    };
+  }, [recorridosTodos, riegosRango, mesAnterior?.clave, puedeRecorridos, puedeRiegos]);
+
+  /*
+   * Tres cifras siempre, como en un tablero. Si la cuenta no tiene uno de los
+   * dos servicios, su hueco lo ocupa "días con actividad" en vez de dejar una
+   * fila coja.
+   */
+  const kpis = [
+    {
+      clave: 'gasto', icono: Wallet, etiqueta: 'Gasto del mes',
+      valor: dinero.format(gastoTotalMes),
+      tendencia: tendenciaDeGasto(variacion, nombreMesAnterior),
+    },
+    puedeRecorridos && {
+      clave: 'recorridos', icono: RouteIcon, etiqueta: 'Recorridos',
+      valor: totalRecorridosMes,
+      tendencia: tendenciaDeCuenta(totalRecorridosMes, recorridosAnterior, nombreMesAnterior),
+    },
+    puedeRiegos && {
+      clave: 'riegos', icono: Droplets, etiqueta: 'Riegos',
+      valor: totalRiegosMes,
+      tendencia: tendenciaDeCuenta(totalRiegosMes, riegosAnterior, nombreMesAnterior),
+    },
+  ].filter(Boolean);
+  if (kpis.length < 3) {
+    kpis.push({
+      clave: 'dias', icono: CalendarCheck, etiqueta: 'Días con actividad',
+      valor: diasConActividad.length,
+      tendencia: tendenciaDeCuenta(diasConActividad.length, diasAnterior, nombreMesAnterior),
+    });
+  }
+
+  const tiposDelMes = useMemo(() => {
+    const cuenta = { traer: 0, llevar: 0, ambos: 0 };
+    Object.values(recorridosMensuales).flat().forEach((r) => {
+      if (r.tipo_recorrido in cuenta) cuenta[r.tipo_recorrido] += 1;
+    });
+    // Mismos nombres que la leyenda del cronograma, que está en esta misma pantalla.
+    return [
+      { clave: 'traer', etiqueta: tipoLabel.traer, cuenta: cuenta.traer },
+      { clave: 'llevar', etiqueta: tipoLabel.llevar, cuenta: cuenta.llevar },
+      { clave: 'ambos', etiqueta: tipoLabel.ambos, cuenta: cuenta.ambos },
+    ];
+  }, [recorridosMensuales]);
+
+  /**
+   * El día con más registros; si empatan, el primero, y cuántos empatan.
+   * Presentar como "el más activo" un día que empata con otros cinco sería
+   * cierto y no diría nada, así que el aviso cambia la frase en ese caso.
+   */
+  const diaMasActivo = useMemo(() => {
+    let mejor = null;
+    let empates = 0;
+    diasConActividad.forEach((dia) => {
+      const n = (recorridosMensuales[dia]?.length ?? 0) + (riegosMensuales[dia]?.length ?? 0);
+      if (!mejor || n > mejor.n) { mejor = { dia, n }; empates = 1; }
+      else if (n === mejor.n) { empates += 1; if (dia < mejor.dia) mejor = { dia, n }; }
+    });
+    return mejor && { ...mejor, empates };
+  }, [diasConActividad, recorridosMensuales, riegosMensuales]);
+
+  const registrosDelMes = totalRecorridosMes + totalRiegosMes;
+  const nombreMes = nombresMeses[mesActual - 1].toLowerCase();
+
+  const irA = (id) => document.getElementById(id)?.scrollIntoView({
+    behavior: reduceMotion ? 'auto' : 'smooth', block: 'start',
+  });
+
   const MonthStepper = () => (
-    <div className="flex items-center gap-0.5 rounded-control bg-fill/10 p-0.5">
+    <div className="flex items-center gap-0.5 rounded-full border border-separator/70 bg-surface p-0.5">
       <motion.button
         type="button" onClick={() => cambiarMes(-1)} aria-label="Mes anterior"
         whileTap={reduceMotion ? { opacity: 0.6 } : { scale: 0.9 }} transition={springSnappy}
-        className="tappable rounded-[0.625rem] p-1.5 text-label-secondary transition-colors hover:bg-surface hover:text-label"
+        className="tappable rounded-full p-1.5 text-label-secondary transition-colors hover:bg-fill/12 hover:text-label"
       >
         <ChevronLeft size={17} strokeWidth={2.2} />
       </motion.button>
@@ -729,7 +783,7 @@ const Dashboard = () => {
       <motion.button
         type="button" onClick={() => cambiarMes(1)} aria-label="Mes siguiente"
         whileTap={reduceMotion ? { opacity: 0.6 } : { scale: 0.9 }} transition={springSnappy}
-        className="tappable rounded-[0.625rem] p-1.5 text-label-secondary transition-colors hover:bg-surface hover:text-label"
+        className="tappable rounded-full p-1.5 text-label-secondary transition-colors hover:bg-fill/12 hover:text-label"
       >
         <ChevronRight size={17} strokeWidth={2.2} />
       </motion.button>
@@ -738,272 +792,248 @@ const Dashboard = () => {
 
   return (
     <div className="pb-4">
-      <PageHeader
-        title="Resumen"
-        subtitle="Actividad y gasto del mes"
-        actions={
-          <>
-            {/* El mes gobierna toda la pantalla —cifras, barras y calendario—,
-                así que vive en la cabecera. Dentro de una tarjeta parecía
-                mandar solo sobre ella. */}
-            <MonthStepper />
+      {/* ── Cabecera ────────────────────────────────────────────────────────
+          El título con la fecha de hoy al lado, y a la derecha lo que
+          gobierna la pantalla: el mes y las acciones. */}
+      <div className="mb-6 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="text-large-title font-bold tracking-tight text-label sm:text-[2.5rem] sm:leading-[1.1]">
+            Resumen
+          </h1>
+          <span className="flex items-center gap-2 rounded-full border border-separator/70 bg-surface px-3.5 py-1.5 text-footnote text-label-secondary">
+            <CalendarIcon size={14} strokeWidth={2} aria-hidden="true" />
+            Hoy, {fechaDeHoy.format(new Date())}
+          </span>
+        </div>
 
-            {/* Con los dos servicios se emite UN documento con su total; con
-                uno solo, el informe propio de ese servicio. Dos botones para
-                quien solo usa uno serían un botón que nunca sirve. */}
-            {puedeRecorridos && puedeRiegos ? (
-              <Button
-                variant="secondary"
-                onClick={exportarGeneralPDF}
-                disabled={cargando || (totalRecorridosMes === 0 && totalRiegosMes === 0)}
-                icon={<FileDown size={16} strokeWidth={2.1} />}
-              >
-                PDF del mes
-              </Button>
-            ) : puedeRecorridos ? (
-              <Button
-                variant="secondary"
-                onClick={exportarPDF}
-                disabled={loading || totalRecorridosMes === 0}
-                icon={<FileDown size={16} strokeWidth={2.1} />}
-              >
-                PDF recorridos
-              </Button>
-            ) : (
-              <Button
-                variant="secondary"
-                onClick={exportarRiegosPDF}
-                disabled={loadingRiegos || totalRiegosMes === 0}
-                icon={<FileDown size={16} strokeWidth={2.1} />}
-              >
-                PDF riegos
-              </Button>
-            )}
-            {puedeRiegos && (
-              <Button
-                variant="secondary"
-                onClick={() => setModalRiego(true)}
-                icon={<Plus size={17} strokeWidth={2.3} />}
-              >
-                Nuevo riego
-              </Button>
-            )}
-            {puedeRecorridos && (
-              <Button onClick={handleOpenModal} icon={<Plus size={17} strokeWidth={2.3} />}>
-                Nuevo recorrido
-              </Button>
-            )}
-          </>
-        }
-      />
+        <div className="flex flex-wrap items-center gap-2">
+          {/* El mes gobierna toda la pantalla —cifras, barras y calendario—,
+              así que vive en la cabecera y no dentro de una tarjeta. */}
+          <MonthStepper />
 
-      {/* El gasto primero: es la pregunta que trae a esta pantalla.
-          A su lado, los últimos meses para saber si este se sale de lo normal. */}
-      <div className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-12">
-        {cargando ? <EsqueletoCifra /> : (
-          <Card className="lg:col-span-5">
-            <p className="text-footnote font-medium text-label-secondary">Gasto del mes</p>
-            <p className="tabular mt-1 text-large-title font-semibold text-label">
-              {dinero.format(gastoTotalMes)}
-            </p>
+          {/* Con los dos servicios se emite UN documento con su total; con
+              uno solo, el informe propio de ese servicio. */}
+          {puedeRecorridos && puedeRiegos ? (
+            <Button
+              variant="secondary" className="!rounded-full" onClick={exportarGeneralPDF}
+              disabled={cargando || (totalRecorridosMes === 0 && totalRiegosMes === 0)}
+              icon={<FileDown size={16} strokeWidth={2.1} />}
+            >
+              PDF del mes
+            </Button>
+          ) : puedeRecorridos ? (
+            <Button
+              variant="secondary" className="!rounded-full" onClick={exportarPDF}
+              disabled={loading || totalRecorridosMes === 0}
+              icon={<FileDown size={16} strokeWidth={2.1} />}
+            >
+              PDF recorridos
+            </Button>
+          ) : (
+            <Button
+              variant="secondary" className="!rounded-full" onClick={exportarRiegosPDF}
+              disabled={loadingRiegos || totalRiegosMes === 0}
+              icon={<FileDown size={16} strokeWidth={2.1} />}
+            >
+              PDF riegos
+            </Button>
+          )}
+          {puedeRiegos && (
+            <Button
+              variant="secondary" className="!rounded-full" onClick={() => setModalRiego(true)}
+              icon={<Plus size={17} strokeWidth={2.3} />}
+            >
+              Nuevo riego
+            </Button>
+          )}
+          {puedeRecorridos && (
+            <Button className="!rounded-full" onClick={handleOpenModal} icon={<Plus size={17} strokeWidth={2.3} />}>
+              Nuevo recorrido
+            </Button>
+          )}
+        </div>
+      </div>
 
-            {/* La variación se dice con palabras además de con color y flecha:
-                "sube" y "baja" no pueden depender de distinguir verde de rojo. */}
-            {variacion === null ? (
-              <p className="mt-1.5 text-footnote text-label-tertiary">
-                Sin gasto en {resumenMeses.at(-2)?.nombre.toLowerCase() ?? 'el mes anterior'}
-              </p>
-            ) : (
-              <p className={`mt-1.5 flex items-center gap-1 text-footnote font-medium ${
-                variacion > 0 ? 'text-caution' : variacion < 0 ? 'text-positive' : 'text-label-tertiary'
-              }`}>
-                {variacion !== 0 && (
-                  variacion > 0
-                    ? <TrendingUp size={14} strokeWidth={2.2} />
-                    : <TrendingDown size={14} strokeWidth={2.2} />
-                )}
-                {variacion === 0
-                  ? `Igual que en ${resumenMeses.at(-2)?.nombre.toLowerCase()}`
-                  : `${Math.abs(variacion).toFixed(0)}% ${variacion > 0 ? 'más' : 'menos'} que en ${resumenMeses.at(-2)?.nombre.toLowerCase()}`}
-              </p>
-            )}
+      {/* ── Cifras ──────────────────────────────────────────────────────────── */}
+      <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        {cargando
+          ? [0, 1, 2].map((i) => <EsqueletoKpi key={i} />)
+          : kpis.map(({ clave, ...kpi }) => <Kpi key={clave} {...kpi} />)}
+      </div>
 
-            <div className="mt-5 space-y-3 border-t border-separator/50 pt-4">
-              {puedeRecorridos && (
-                <div className="flex items-center gap-3">
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-field bg-accent/12 text-accent">
-                    <RouteIcon size={15} strokeWidth={2} />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-subhead font-medium text-label">Recorridos</p>
-                    <p className="text-footnote text-label-tertiary">
-                      {totalRecorridosMes} en {diasConRecorridos} {diasConRecorridos === 1 ? 'día' : 'días'}
-                    </p>
-                  </div>
-                  <span className="tabular text-subhead font-semibold text-label">
-                    {dinero.format(costoRecorridos)}
-                  </span>
-                </div>
-              )}
+      {/* ── Gasto por mes y tipos de recorrido ──────────────────────────────── */}
+      <div className="mb-4 grid grid-cols-1 gap-4 xl:grid-cols-12">
+        <Card className={puedeRecorridos ? 'xl:col-span-7' : 'xl:col-span-12'}>
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-title3 font-semibold text-label">Gasto por mes</h2>
+            <span className="rounded-full border border-separator/70 px-3 py-1 text-footnote text-label-secondary">
+              Últimos {MESES_DE_HISTORIAL} meses
+            </span>
+          </div>
+          {cargando ? <EsqueletoBarras /> : (
+            <GraficoMeses
+              meses={resumenMeses}
+              colores={colors}
+              puedeRecorridos={puedeRecorridos}
+              puedeRiegos={puedeRiegos}
+              reduceMotion={reduceMotion}
+              leyenda={
+                puedeRecorridos && puedeRiegos
+                  ? [
+                    { etiqueta: 'Recorridos', valor: dinero.format(costoRecorridos), color: colors.recorridos },
+                    { etiqueta: 'Riegos', valor: dinero.format(costoRiegos), color: colors.riegos },
+                    // Etiquetas cortas: en el móvil van tres en fila. El mes ya está en la cabecera.
+                    { etiqueta: 'Total', valor: dinero.format(gastoTotalMes) },
+                  ]
+                  : [
+                    {
+                      etiqueta: 'Este mes',
+                      valor: dinero.format(gastoTotalMes),
+                      color: puedeRecorridos ? colors.recorridos : colors.riegos,
+                    },
+                    {
+                      etiqueta: 'Promedio',
+                      valor: dinero.format(resumenMeses.reduce((t, m) => t + m.total, 0) / resumenMeses.length),
+                    },
+                  ]
+              }
+            />
+          )}
+        </Card>
 
-              {puedeRiegos && (
-                <div className="flex items-center gap-3">
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-field bg-info/14 text-info">
-                    <Droplets size={15} strokeWidth={2} />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-subhead font-medium text-label">Riegos</p>
-                    <p className="text-footnote text-label-tertiary">
-                      {totalRiegosMes} en {diasConRiegos} {diasConRiegos === 1 ? 'día' : 'días'}
-                    </p>
-                  </div>
-                  <span className="tabular text-subhead font-semibold text-label">
-                    {dinero.format(costoRiegos)}
-                  </span>
-                </div>
-              )}
+        {puedeRecorridos && (
+          <Card className="xl:col-span-5">
+            <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-title3 font-semibold text-label">Tipos de recorrido</h2>
+              <span className="flex items-center gap-1.5 rounded-full border border-separator/70 px-3 py-1 text-footnote text-label-secondary">
+                <CalendarIcon size={13} strokeWidth={2} aria-hidden="true" />
+                {nombresMeses[mesActual - 1]} {anioActual}
+              </span>
             </div>
-          </Card>
-        )}
-
-        {cargando ? <EsqueletoGrafico /> : (
-          <Card className="lg:col-span-7">
-            <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <h2 className="text-headline font-semibold text-label">Últimos {MESES_DE_HISTORIAL} meses</h2>
-                <p className="mt-0.5 text-footnote text-label-secondary">
-                  Gasto por mes, hasta {nombresMeses[mesActual - 1].toLowerCase()}
-                </p>
+            {cargando ? <EsqueletoBarras alto="h-56" /> : totalRecorridosMes > 0 ? (
+              <BurbujasTipos tipos={tiposDelMes} />
+            ) : (
+              <div className="flex h-56 flex-col items-center justify-center text-center">
+                <span className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-fill/10 text-label-tertiary">
+                  <RouteIcon size={22} strokeWidth={1.9} />
+                </span>
+                <p className="text-subhead text-label-secondary">Sin recorridos en {nombreMes}</p>
               </div>
-
-              {puedeRecorridos && puedeRiegos && (
-                <ul className="flex items-center gap-4">
-                  <li className="flex items-center gap-1.5">
-                    <span aria-hidden="true" className="h-2 w-2 rounded-full" style={{ backgroundColor: colors.recorridos }} />
-                    <span className="text-footnote text-label-secondary">Recorridos</span>
-                  </li>
-                  <li className="flex items-center gap-1.5">
-                    <span aria-hidden="true" className="h-2 w-2 rounded-full" style={{ backgroundColor: colors.riegos }} />
-                    <span className="text-footnote text-label-secondary">Riegos</span>
-                  </li>
-                </ul>
-              )}
-            </div>
-
-            <div className="h-[220px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={resumenMeses} margin={{ top: 8, right: 8, left: -18, bottom: 0 }} barCategoryGap="28%">
-                  {/* Rejilla continua y discreta: el punteado añade ruido y se
-                      lee como "proyección" cuando solo es una guía. */}
-                  <CartesianGrid vertical={false} stroke="rgb(var(--c-separator) / 0.5)" />
-                  <XAxis
-                    dataKey="etiqueta" axisLine={false} tickLine={false} dy={8}
-                    tick={{ fill: 'rgb(var(--c-label-3))', fontSize: 11 }}
-                  />
-                  <YAxis
-                    axisLine={false} tickLine={false} width={52}
-                    tickFormatter={(valor) => dinero.format(valor).replace('.00', '')}
-                    tick={{ fill: 'rgb(var(--c-label-3))', fontSize: 11 }}
-                  />
-                  <Tooltip content={<TooltipMeses colors={colors} />} cursor={{ fill: 'rgb(var(--c-fill) / 0.08)' }} />
-
-                  {/* Los meses pasados van atenuados para que el mes a la vista
-                      se distinga sin necesidad de leer el eje. */}
-                  {puedeRecorridos && (
-                    <Bar dataKey="recorridos" stackId="gasto"
-                      isAnimationActive={!reduceMotion}
-                      radius={puedeRiegos ? 0 : [6, 6, 0, 0]}>
-                      {/* El color va en cada Cell y no solo en el Bar: Cell
-                          reemplaza las props del rectángulo, así que heredar
-                          el fill deja las barras transparentes. */}
-                      {resumenMeses.map((mes) => (
-                        <Cell key={mes.clave} fill={colors.recorridos} fillOpacity={mes.esActual ? 1 : 0.4} />
-                      ))}
-                    </Bar>
-                  )}
-                  {puedeRiegos && (
-                    <Bar dataKey="riegos" stackId="gasto" radius={[6, 6, 0, 0]}
-                      isAnimationActive={!reduceMotion}>
-                      {resumenMeses.map((mes) => (
-                        <Cell key={mes.clave} fill={colors.riegos} fillOpacity={mes.esActual ? 1 : 0.4} />
-                      ))}
-                    </Bar>
-                  )}
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
+            )}
           </Card>
         )}
       </div>
 
-      {/* Liquidación: cuánto de lo cobrado es del auto y cuánto del chofer.
-          Solo va con recorridos, que es donde intervienen los autos. */}
-      {puedeRecorridos && !cargando && liquidacion.disponible && (
-        <Card padding="p-0" className="mb-4 overflow-hidden">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-separator/50 p-5">
-            <div className="flex items-center gap-2">
-              <HandCoins size={18} strokeWidth={2.1} className="text-accent" />
-              <h2 className="text-headline font-semibold text-label">Liquidación del transporte</h2>
-            </div>
-            <p className="text-footnote text-label-secondary">
-              {nombresMeses[mesActual - 1]} {anioActual}
-            </p>
-          </div>
+      {/* ── Avisos: dos frases que resumen el mes ───────────────────────────── */}
+      {!cargando && (
+        <div className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <Aviso
+            icono={PieChart}
+            accion={<TrendingUp size={20} strokeWidth={2} className="shrink-0 text-label-secondary" aria-hidden="true" />}
+          >
+            {diaMasActivo && diaMasActivo.empates === 1 ? (
+              <>
+                El <span className="font-semibold text-label">{diaMasActivo.dia} de {nombreMes}</span> fue
+                el día con más actividad: {diaMasActivo.n} {diaMasActivo.n === 1 ? 'registro' : 'registros'}.
+              </>
+            ) : diaMasActivo ? (
+              <>
+                Tu día más movido tuvo{' '}
+                <span className="font-semibold text-label">
+                  {diaMasActivo.n} {diaMasActivo.n === 1 ? 'registro' : 'registros'}
+                </span>
+                , y hubo {diaMasActivo.empates} días así en {nombreMes}.
+              </>
+            ) : (
+              <>Todavía no hay actividad en {nombreMes}.</>
+            )}
+          </Aviso>
 
-          <div className="grid grid-cols-2 border-b border-separator/50">
-            <div className="border-r border-separator/50 p-5">
-              <p className="text-footnote font-medium text-label-secondary">Para los autos</p>
-              <p className="tabular mt-1 text-title1 font-semibold text-label">{dinero.format(liquidacion.auto)}</p>
-              <p className="mt-0.5 text-footnote text-label-tertiary">Lo que hay que entregar</p>
-            </div>
-            <div className="p-5">
-              <p className="text-footnote font-medium text-label-secondary">Para el chofer</p>
-              <p className="tabular mt-1 text-title1 font-semibold text-positive">{dinero.format(liquidacion.chofer)}</p>
-              <p className="mt-0.5 text-footnote text-label-tertiary">Lo que queda</p>
-            </div>
-          </div>
+          {/* Si hay algo que entregar a los autos, eso es lo que hay que
+              saber; si no, cuánto se ha registrado. La flecha lleva a donde
+              está el detalle de cada cosa. */}
+          {liquidacion.disponible && liquidacion.auto > 0 ? (
+            <Aviso
+              icono={HandCoins}
+              accion={
+                <button
+                  type="button" onClick={() => irA('liquidacion')}
+                  aria-label="Ver la liquidación por vehículo"
+                  className="tappable flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-label text-canvas transition-opacity hover:opacity-85"
+                >
+                  <ChevronRight size={18} strokeWidth={2.4} />
+                </button>
+              }
+            >
+              Este mes entregas <span className="tabular font-semibold text-label">{dinero.format(liquidacion.auto)}</span> a
+              los autos y te quedan <span className="tabular font-semibold text-label">{dinero.format(liquidacion.chofer)}</span>.
+            </Aviso>
+          ) : (
+            <Aviso
+              icono={BarChart3}
+              accion={
+                <button
+                  type="button" onClick={() => irA('cronograma')}
+                  aria-label="Ver el cronograma del mes"
+                  className="tappable flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-label text-canvas transition-opacity hover:opacity-85"
+                >
+                  <ChevronRight size={18} strokeWidth={2.4} />
+                </button>
+              }
+            >
+              <span className="tabular font-semibold text-label">
+                {registrosDelMes} {registrosDelMes === 1 ? 'registro' : 'registros'}
+              </span> en {nombreMes}, repartidos en {diasConActividad.length}{' '}
+              {diasConActividad.length === 1 ? 'día' : 'días'}.
+            </Aviso>
+          )}
+        </div>
+      )}
 
-          <ul className="divide-y divide-separator/50">
+      {/* ── Vehículos del mes ───────────────────────────────────────────────
+          Qué dio cada carro y cuánto hay que entregarle a su dueño. Solo con
+          recorridos, que es donde intervienen los autos. */}
+      {puedeRecorridos && !cargando && liquidacion.disponible && liquidacion.filas.length > 0 && (
+        <section id="liquidacion" aria-label="Vehículos del mes" className="mb-6 scroll-mt-24">
+          {/* Con dos vehículos, dos columnas: una tercera vacía dejaría un
+              hueco que parece que falta algo. */}
+          <div className={`grid grid-cols-1 gap-4 md:grid-cols-2 ${
+            liquidacion.filas.length === 2 ? '' : 'xl:grid-cols-3'
+          }`}>
             {liquidacion.filas.map((fila) => (
-              <li key={fila.clave} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-3.5">
-                <div className="min-w-0 flex-1 basis-40">
-                  <p className="truncate text-subhead font-medium text-label">{fila.descripcion}</p>
-                  <p className="tabular text-footnote text-label-tertiary">
-                    {fila.viajes} {fila.viajes === 1 ? 'viaje' : 'viajes'} · {dinero.format(fila.cobrado)} cobrado
-                  </p>
-                </div>
-
-                <dl className="tabular flex items-center gap-5 text-right">
-                  <div>
-                    <dt className="text-caption text-label-tertiary">Auto</dt>
-                    <dd className="text-subhead font-semibold text-label">{dinero.format(fila.auto)}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-caption text-label-tertiary">Chofer</dt>
-                    <dd className="text-subhead font-semibold text-positive">{dinero.format(fila.chofer)}</dd>
-                  </div>
-                </dl>
-
-                {/* Solo hay documento que entregar si el auto se lleva algo. */}
-                {fila.auto > 0 ? (
-                  <Button
-                    variant="secondary" size="sm"
-                    onClick={() => exportarLiquidacion(fila)}
-                    icon={<FileDown size={14} strokeWidth={2.1} />}
+              <TarjetaVehiculo
+                key={fila.clave}
+                nombre={fila.descripcion}
+                estado={fila.auto > 0 ? 'Cobra' : 'No cobra'}
+                estadoActivo={fila.auto > 0}
+                subtitulo={`${fila.viajes} ${fila.viajes === 1 ? 'viaje' : 'viajes'} · ${
+                  fila.auto > 0 ? `entregas ${dinero.format(fila.auto)}` : 'todo para el chofer'
+                }`}
+                accion={fila.auto > 0 ? (
+                  <button
+                    type="button" onClick={() => exportarLiquidacion(fila)}
                     aria-label={`Descargar la liquidación de ${fila.descripcion}`}
+                    className="tappable flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-separator/70 text-label-secondary transition-colors hover:bg-fill/10 hover:text-label"
                   >
-                    PDF
-                  </Button>
+                    <FileDown size={16} strokeWidth={2.1} />
+                  </button>
                 ) : (
-                  <span className="w-[4.25rem] text-center text-caption text-label-tertiary">No cobra</span>
+                  <Link
+                    to="/vehiculos"
+                    aria-label={`Configurar el reparto de ${fila.descripcion}`}
+                    className="tappable flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-separator/70 text-label-secondary transition-colors hover:bg-fill/10 hover:text-label"
+                  >
+                    <ChevronRight size={16} strokeWidth={2.2} />
+                  </Link>
                 )}
-              </li>
+              />
             ))}
-          </ul>
-        </Card>
+          </div>
+        </section>
       )}
 
       {/* Calendario + actividad: recorridos y riegos sobre el mismo mes */}
+      <div id="cronograma" className="scroll-mt-24" />
       {cargando ? (
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
           <EsqueletoCalendario />
