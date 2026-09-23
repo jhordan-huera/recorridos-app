@@ -105,11 +105,11 @@ const Vehiculos = () => {
 
     // Las mismas dos reglas que aplica el servidor, avisadas antes de enviar.
     const { auto, chofer } = repartoDe(formData);
-    if (formData.auto_cobra && auto <= 0) {
+    if (repartoDisponible && formData.auto_cobra && auto <= 0) {
       showAlert('warning', 'Si el auto cobra, indica cuánto se lleva por recorrido');
       return;
     }
-    if (chofer < 0) {
+    if (repartoDisponible && chofer < 0) {
       showAlert('warning', 'El auto no puede llevarse más de lo que cuesta el recorrido');
       return;
     }
@@ -121,8 +121,10 @@ const Vehiculos = () => {
       placa: formData.placa || null,
       capacidad: formData.capacidad ? parseInt(formData.capacidad, 10) : null,
       costo_por_recorrido: formData.costo_por_recorrido ? parseFloat(formData.costo_por_recorrido) : 0,
-      auto_cobra: formData.auto_cobra,
-      parte_auto: formData.auto_cobra ? auto : 0,
+      ...(repartoDisponible && {
+        auto_cobra: formData.auto_cobra,
+        parte_auto: formData.auto_cobra ? auto : 0,
+      }),
     };
 
     try {
@@ -179,6 +181,19 @@ const Vehiculos = () => {
     });
     setMostrarModal(true);
   };
+
+  /*
+   * ¿La API conoce el reparto? Si este front se despliega antes que el
+   * backend, mandarle auto_cobra y parte_auto haría que rechazara con un 400
+   * cualquier alta o edición de vehículos. La señal es que los vehículos que
+   * devuelve traen el campo. Sin vehículos todavía no se puede saber, y se
+   * oculta: el primero se crea como "no cobra", que es lo que la API asigna
+   * por defecto de todos modos.
+   */
+  const repartoDisponible = useMemo(
+    () => (vehiculos || []).some((vehiculo) => 'auto_cobra' in vehiculo),
+    [vehiculos]
+  );
 
   const filteredVehiculos = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
@@ -294,6 +309,7 @@ const Vehiculos = () => {
                             ${parseFloat(vehiculo.costo_por_recorrido || 0).toFixed(2)}
                           </dd>
                         </div>
+                        {repartoDisponible && (
                         <div className="col-span-2">
                           <dt className="text-caption text-label-tertiary">Reparto por recorrido</dt>
                           <dd className="tabular mt-0.5 text-subhead font-medium text-label">
@@ -305,6 +321,7 @@ const Vehiculos = () => {
                             })()}
                           </dd>
                         </div>
+                        )}
                       </dl>
                     </div>
 
@@ -396,6 +413,7 @@ const Vehiculos = () => {
           {/* Primero la pregunta —¿el auto cobra?— y solo si cobra, cuánto.
               Así "no cobra" es una decisión y no un importe que se dejó en
               cero, y el campo no estorba en los autos que no cobran. */}
+          {repartoDisponible && (
           <div className="space-y-3">
             <Switch
               icon={HandCoins}
@@ -435,6 +453,7 @@ const Vehiculos = () => {
               );
             })()}
           </div>
+          )}
         </form>
       </Modal>
     </div>
