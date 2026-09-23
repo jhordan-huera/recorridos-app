@@ -2,7 +2,7 @@ import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { motion, useReducedMotion } from 'motion/react';
 import { useAuth } from '../../context/AuthContext';
-import { entradasDeMenu } from '../../lib/navegacion';
+import { entradasDeMenu, estaActiva } from '../../lib/navegacion';
 import { springSnappy, haptics } from '../../lib/motion';
 
 const BottomNav = () => {
@@ -23,8 +23,7 @@ const BottomNav = () => {
                 <ul className="mx-auto flex max-w-lg items-stretch justify-between px-1 pt-1">
                     {navItems.map((item) => {
                         const Icon = item.icon;
-                        const isActive = location.pathname === item.path
-                            || (item.path === '/dashboard' && location.pathname === '/');
+                        const isActive = estaActiva(item, location.pathname);
 
                         return (
                             <li key={item.path} className="flex-1">

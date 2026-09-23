@@ -16,6 +16,7 @@ import { useApp } from '../context/AppContext';
 import {
   createRecorrido, updateRecorrido, deleteRecorrido,
   getAllRecorridos, getAllNinos, getAllVehiculos, getAllRiegos,
+  getCierres, terminarMes, reabrirMes,
   mensajeDeError, fueBien, mensajeDeRespuesta,
 } from '../services/api';
 import Modal from '../components/ui/Modal';
@@ -34,6 +35,7 @@ import TarjetaVehiculo from '../components/resumen/TarjetaVehiculo';
 import GraficoMeses from '../components/resumen/GraficoMeses';
 import BurbujasTipos from '../components/resumen/BurbujasTipos';
 import { PALETA_GRAFICO } from '../components/resumen/paleta';
+import EstadoDelMes from '../components/resumen/EstadoDelMes';
 import { MESES as nombresMeses, rangoDelMes, diaDeFecha, dosDigitos, hoyISO, horaActual } from '../lib/fechas';
 import { springSnappy, haptics } from '../lib/motion';
 
@@ -221,7 +223,7 @@ const EsqueletoActividad = () => (
 
 const Dashboard = () => {
   const { showAlert } = useAlert();
-  const { user, puedeRecorridos, puedeRiegos } = useAuth();
+  const { user, isAdmin, puedeRecorridos, puedeRiegos } = useAuth();
   const { resolvedTheme } = useApp();
   const reduceMotion = useReducedMotion();
   const colors = PALETA_GRAFICO[resolvedTheme] || PALETA_GRAFICO.light;
@@ -246,6 +248,11 @@ const Dashboard = () => {
   const [recorridoAEliminar, setRecorridoAEliminar] = useState(null);
   const [loadingRiegos, setLoadingRiegos] = useState(true);
   const [modalRiego, setModalRiego] = useState(false);
+  // Los meses que este usuario ha terminado. Es una lista corta: se pide
+  // entera una vez y se vuelve a pedir tras terminar o reabrir.
+  const [cierres, setCierres] = useState([]);
+  const [accionMes, setAccionMes] = useState(null);    // 'terminar' | 'reabrir'
+  const [ocupadoMes, setOcupadoMes] = useState(false);
   // Se incrementa tras registrar un riego para que el efecto vuelva a pedirlos.
   const [refrescoRiegos, setRefrescoRiegos] = useState(0);
 
@@ -685,6 +692,49 @@ const Dashboard = () => {
     (n) => !ninosSeleccionados.some((sel) => sel.nino_id?.toString() === n.id?.toString())
   );
 
+  /* ── Cierre del mes a la vista ─────────────────────────────────────────── */
+  const cargarCierres = async () => {
+    try {
+      const { data } = await getCierres();
+      setCierres(data.data || []);
+    } catch {
+      // Sin la lista, el mes se presenta como abierto; el servidor sigue
+      // bloqueando lo que esté cerrado de verdad.
+      setCierres([]);
+    }
+  };
+
+  useEffect(() => { cargarCierres(); }, []);
+
+  const cierreDelMes = cierres.find((c) => c.anio === anioActual && c.mes === mesActual) ?? null;
+  const mesCerrado = ['terminado', 'cobrado'].includes(cierreDelMes?.estado);
+
+  const hoy = new Date();
+  const esMesActual = anioActual === hoy.getFullYear() && mesActual === hoy.getMonth() + 1;
+  const esMesFuturo = anioActual > hoy.getFullYear()
+    || (anioActual === hoy.getFullYear() && mesActual > hoy.getMonth() + 1);
+
+  const confirmarAccionMes = async () => {
+    setOcupadoMes(true);
+    try {
+      const respuesta = accionMes === 'terminar'
+        ? await terminarMes(anioActual, mesActual)
+        : await reabrirMes(anioActual, mesActual);
+      if (fueBien(respuesta)) {
+        showAlert('success', respuesta.data?.mensaje
+          || (accionMes === 'terminar' ? 'Mes terminado' : 'Mes reabierto'));
+        await cargarCierres();
+      } else {
+        showAlert('error', mensajeDeRespuesta(respuesta));
+      }
+    } catch (error) {
+      showAlert('error', mensajeDeError(error));
+    } finally {
+      setOcupadoMes(false);
+      setAccionMes(null);
+    }
+  };
+
   /* ── Cifras del tablero ─────────────────────────────────────────────────── */
   const mesAnterior = resumenMeses.at(-2);
   const nombreMesAnterior = mesAnterior?.nombre.toLowerCase() ?? 'el mes anterior';
@@ -853,6 +903,18 @@ const Dashboard = () => {
           )}
         </div>
       </div>
+
+      {/* ── En qué punto está el mes ─────────────────────────────────────────── */}
+      <EstadoDelMes
+        nombreMes={`${nombresMeses[mesActual - 1].toLowerCase()} de ${anioActual}`}
+        cierre={cierreDelMes}
+        esActual={esMesActual}
+        esFuturo={esMesFuturo}
+        esAdmin={isAdmin}
+        ocupado={ocupadoMes}
+        onTerminar={() => setAccionMes('terminar')}
+        onReabrir={() => setAccionMes('reabrir')}
+      />
 
       {/* ── Cifras ──────────────────────────────────────────────────────────── */}
       <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -1175,14 +1237,18 @@ const Dashboard = () => {
                                 <Users size={13} strokeWidth={2.1} className="text-label-tertiary" />
                                 {totalPasajeros} {totalPasajeros === 1 ? 'pasajero' : 'pasajeros'}
                               </span>
-                              <button
-                                type="button"
-                                onClick={() => { setRecorridoAEliminar(recorrido.id); setShowDeleteModal(true); }}
-                                aria-label="Eliminar recorrido"
-                                className="tappable rounded-full p-1.5 text-label-tertiary transition-colors hover:bg-critical/12 hover:text-critical"
-                              >
-                                <Trash2 size={14} strokeWidth={2} />
-                              </button>
+                              {/* En un mes terminado no se ofrece borrar: el
+                                  servidor lo rechazaría. */}
+                              {!mesCerrado && (
+                                <button
+                                  type="button"
+                                  onClick={() => { setRecorridoAEliminar(recorrido.id); setShowDeleteModal(true); }}
+                                  aria-label="Eliminar recorrido"
+                                  className="tappable rounded-full p-1.5 text-label-tertiary transition-colors hover:bg-critical/12 hover:text-critical"
+                                >
+                                  <Trash2 size={14} strokeWidth={2} />
+                                </button>
+                              )}
                             </div>
                           </div>
                         );
@@ -1330,6 +1396,25 @@ const Dashboard = () => {
         message="Este registro se borrará de forma permanente. No se puede deshacer."
         confirmText="Eliminar"
         type="danger"
+      />
+
+      {/* Terminar y reabrir piden confirmación: los dos cambian qué se puede
+          hacer con un mes entero. Reabrir uno cobrado avisa de lo que implica. */}
+      <ConfirmModal
+        isOpen={Boolean(accionMes)}
+        onClose={() => setAccionMes(null)}
+        onConfirm={confirmarAccionMes}
+        loading={ocupadoMes}
+        type={accionMes === 'reabrir' && cierreDelMes?.estado === 'cobrado' ? 'warning' : 'info'}
+        title={accionMes === 'terminar'
+          ? `Terminar ${nombresMeses[mesActual - 1].toLowerCase()}`
+          : `Reabrir ${nombresMeses[mesActual - 1].toLowerCase()}`}
+        confirmText={accionMes === 'terminar' ? 'Terminar mes' : 'Reabrir mes'}
+        message={accionMes === 'terminar'
+          ? `Ya no se podrá añadir, cambiar ni borrar nada de ${nombresMeses[mesActual - 1].toLowerCase()}. Si te equivocas, podrás reabrirlo.`
+          : cierreDelMes?.estado === 'cobrado'
+            ? `Este mes ya está cobrado (${dinero.format(Number(cierreDelMes.total_cobrado))}). Si lo reabres y cambias algo, lo registrado dejará de coincidir con lo cobrado, y el administrador lo verá.`
+            : 'Volverás a poder modificarlo. Mientras esté abierto no se puede cobrar.'}
       />
 
       <RiegoModal

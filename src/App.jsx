@@ -20,6 +20,7 @@ const Vehiculos = lazy(() => import('./pages/Vehiculos'));
 const Recorridos = lazy(() => import('./pages/Recorridos'));
 const Riegos = lazy(() => import('./pages/Riegos'));
 const Users = lazy(() => import('./pages/Users'));
+const Cobros = lazy(() => import('./pages/Cobros'));
 const Profile = lazy(() => import('./pages/Profile'));
 const Login = lazy(() => import('./pages/Login'));
 
@@ -133,6 +134,15 @@ function AppContent() {
                       element={
                         <AdminRoute>
                           <Users />
+                        </AdminRoute>
+                      }
+                    />
+
+                    <Route
+                      path="/cobros"
+                      element={
+                        <AdminRoute>
+                          <Cobros />
                         </AdminRoute>
                       }
                     />

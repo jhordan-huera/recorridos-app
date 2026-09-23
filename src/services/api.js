@@ -343,6 +343,18 @@ export const updateRiego = (id, data) => api.put(`/riegos/${id}`, data);
 export const deleteRiego = (id) => api.delete(`/riegos/${id}`);
 
 /* ─────────────────────────────────────────────────────────────────────────────
+ * Cierre de mes (cada usuario, los suyos) y cobros (solo administrador)
+ * ───────────────────────────────────────────────────────────────────────────── */
+export const getCierres = (anio) => api.get('/cierres', { params: anio ? { anio } : {} });
+export const terminarMes = (anio, mes) => api.post('/cierres', { anio, mes });
+export const reabrirMes = (anio, mes) => api.delete(`/cierres/${anio}/${mes}`);
+
+export const getCobros = (anio, mes) => api.get('/cobros', { params: { anio, mes } });
+export const getDatosDeCobro = (userId, anio, mes) => api.get(`/cobros/${userId}/${anio}/${mes}`);
+export const marcarCobrado = (userId, anio, mes) => api.post(`/cobros/${userId}/${anio}/${mes}/cobro`);
+export const deshacerCobro = (userId, anio, mes) => api.delete(`/cobros/${userId}/${anio}/${mes}/cobro`);
+
+/* ─────────────────────────────────────────────────────────────────────────────
  * Helpers de rol
  * ───────────────────────────────────────────────────────────────────────────── */
 export const getCurrentUserInfo = () => {

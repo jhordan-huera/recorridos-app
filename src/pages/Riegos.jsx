@@ -2,11 +2,11 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import {
   Plus, Droplets, Pencil, Trash2, FileDown, ChevronLeft, ChevronRight,
-  DollarSign, CalendarDays,
+  DollarSign, CalendarDays, Lock,
 } from 'lucide-react';
 import { useAlert } from '../context/AlertContext';
 import { useAuth } from '../context/AuthContext';
-import { getAllRiegos, deleteRiego, mensajeDeError, fueBien, mensajeDeRespuesta } from '../services/api';
+import { getAllRiegos, deleteRiego, getCierres, mensajeDeError, fueBien, mensajeDeRespuesta } from '../services/api';
 import { generarReporteRiegosPdf } from '../lib/reporteRiegosPdf.js';
 import ConfirmModal from '../components/ui/ConfirmModal';
 import RiegoModal from '../components/RiegoModal';
@@ -45,6 +45,15 @@ const Riegos = () => {
   const [aEliminar, setAEliminar] = useState(null);
   const [loading, setLoading] = useState(false);
   const [borrando, setBorrando] = useState(false);
+
+  // Si el mes a la vista está terminado, no se ofrece editar ni borrar: el
+  // servidor lo rechazaría. Se consulta aparte y sin bloquear la pantalla.
+  const [cierres, setCierres] = useState([]);
+  useEffect(() => {
+    getCierres().then(({ data }) => setCierres(data.data || [])).catch(() => setCierres([]));
+  }, []);
+  const mesCerrado = cierres.some((c) => c.anio === anio && c.mes === mes
+    && (c.estado === 'terminado' || c.estado === 'cobrado'));
 
   const cargar = useCallback(async () => {
     setLoading(true);
@@ -128,7 +137,9 @@ const Riegos = () => {
     <div className="pb-4">
       <PageHeader
         title="Riegos"
-        subtitle="Registro de riegos de césped"
+        subtitle={mesCerrado
+          ? `${MESES[mes - 1]} está terminado: se puede consultar, no modificar`
+          : 'Registro de riegos de césped'}
         actions={
           <>
             <div className="flex items-center gap-1 rounded-field border border-separator/70 bg-surface px-1">
@@ -259,21 +270,27 @@ const Riegos = () => {
                     <span className="tabular mr-1 text-headline font-semibold text-label">
                       {dinero.format(parseFloat(riego.costo) || 0)}
                     </span>
-                    <button
-                      type="button" onClick={() => abrirEdicion(riego)}
-                      aria-label={`Editar riego del ${etiquetaFecha(riego.fecha)}`}
-                      className="rounded-field p-2 text-label-secondary hover:bg-fill/10"
-                    >
-                      <Pencil size={15} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { setAEliminar(riego.id); setShowDeleteModal(true); }}
-                      aria-label={`Eliminar riego del ${etiquetaFecha(riego.fecha)}`}
-                      className="rounded-field p-2 text-label-secondary hover:bg-critical/12 hover:text-critical"
-                    >
-                      <Trash2 size={15} />
-                    </button>
+                    {mesCerrado ? (
+                      <Lock size={14} strokeWidth={2} className="mx-2 text-label-tertiary" aria-label="Mes terminado" />
+                    ) : (
+                      <>
+                        <button
+                          type="button" onClick={() => abrirEdicion(riego)}
+                          aria-label={`Editar riego del ${etiquetaFecha(riego.fecha)}`}
+                          className="rounded-field p-2 text-label-secondary hover:bg-fill/10"
+                        >
+                          <Pencil size={15} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setAEliminar(riego.id); setShowDeleteModal(true); }}
+                          aria-label={`Eliminar riego del ${etiquetaFecha(riego.fecha)}`}
+                          className="rounded-field p-2 text-label-secondary hover:bg-critical/12 hover:text-critical"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </>
+                    )}
                   </div>
                 </Card>
               </motion.div>
