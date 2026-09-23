@@ -390,3 +390,52 @@
     transform: none;
   }
 }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Pantalla de carga
+ *
+ * El tramo recorre la pista de lado a lado. Con "reducir movimiento" no se
+ * desplaza —eso es justo lo que ese ajuste pide evitar—, pero tampoco se
+ * congela: respira en opacidad. La regla global de más arriba apaga TODAS las
+ * animaciones con "reducir movimiento", y sin esta excepción la barra quedaba
+ * inmóvil, que es exactamente "parece colgada".
+ * ───────────────────────────────────────────────────────────────────────────── */
+@keyframes carga-recorre {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(250%); }
+}
+
+@keyframes carga-respira {
+  0%, 100% { opacity: 0.35; }
+  50%      { opacity: 1; }
+}
+
+@keyframes carga-aparece {
+  from { opacity: 0; transform: translateY(6px) scale(0.96); }
+  to   { opacity: 1; transform: none; }
+}
+
+.carga-indeterminada {
+  animation: carga-recorre 1.2s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+
+.carga-entrada {
+  animation: carga-aparece 420ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.carga-entrada-2 {
+  animation-delay: 90ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .carga-indeterminada {
+    left: 0;
+    width: 100%;
+    transform: none !important;
+    animation: carga-respira 1.8s ease-in-out infinite !important;
+  }
+
+  .carga-entrada {
+    animation: none !important;
+  }
+}

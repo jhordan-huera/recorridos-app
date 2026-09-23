@@ -9,9 +9,9 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { AlertProvider } from './context/AlertContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import AdminRoute from './components/AdminRoute';
+import PantallaDeCarga from './components/PantallaDeCarga';
 import IdleTimerHandler from './components/IdleTimerHandler';
 import { Suspense, lazy } from 'react';
-import { Route as RouteIcon } from 'lucide-react';
 
 // Lazy loading components for better performance
 const Dashboard = lazy(() => import('./pages/Dashboard'));
@@ -27,23 +27,7 @@ const Login = lazy(() => import('./pages/Login'));
 function AppContent() {
   const { user, loading } = useAuth();
 
-  if (loading) {
-    return (
-      <div className="flex min-h-[100dvh] flex-col items-center justify-center gap-6 bg-canvas">
-        <div className="flex h-14 w-14 items-center justify-center rounded-panel bg-accent text-white">
-          <RouteIcon size={26} strokeWidth={2.3} />
-        </div>
-        <div className="flex flex-col items-center gap-3">
-          <p className="text-subhead font-medium text-label-secondary">Recorridos</p>
-          {/* Indicador de estado, no de progreso: no promete un porcentaje
-              que no conocemos. */}
-          <span className="h-1 w-24 overflow-hidden rounded-full bg-fill/15">
-            <span className="block h-full w-1/3 animate-shimmer rounded-full bg-[length:200%_100%] bg-[linear-gradient(90deg,transparent,rgb(var(--c-accent)),transparent)]" />
-          </span>
-        </div>
-      </div>
-    );
-  }
+  if (loading) return <PantallaDeCarga />;
 
   // Disable console logs in production
   if (import.meta.env.PROD) {
@@ -61,7 +45,7 @@ function AppContent() {
           <Route
             path="/login"
             element={
-              <Suspense fallback={<div className="flex min-h-[100dvh] w-full items-center justify-center bg-canvas text-subhead text-label-secondary">Cargando…</div>}>
+              <Suspense fallback={<PantallaDeCarga />}>
                 {user ? <Navigate to="/dashboard" replace /> : <Login />}
               </Suspense>
             }
