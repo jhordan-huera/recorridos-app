@@ -3,7 +3,7 @@ import { motion, useReducedMotion } from 'motion/react';
 import {
   Users, Route as RouteIcon, Calendar as CalendarIcon,
   ChevronLeft, ChevronRight, Clock, Trash2, Plus, Droplets, FileDown,
-  TrendingUp, TrendingDown,
+  TrendingUp, TrendingDown, HandCoins,
 } from 'lucide-react';
 import { BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useAlert } from '../context/AlertContext';
@@ -11,6 +11,7 @@ import { useAuth } from '../context/AuthContext';
 import { generarReportePdf } from '../lib/reportePdf';
 import { generarReporteRiegosPdf } from '../lib/reporteRiegosPdf.js';
 import { generarReporteGeneralPdf } from '../lib/reporteGeneralPdf.js';
+import { generarLiquidacionPdf } from '../lib/liquidacionPdf.js';
 import { useApp } from '../context/AppContext';
 import {
   createRecorrido, updateRecorrido, deleteRecorrido,
@@ -440,6 +441,65 @@ const Dashboard = () => {
     : null;
 
   const cargando = loading || loadingRiegos;
+
+  /**
+   * Liquidación del transporte del mes: por cada vehículo, cuánto se cobró y
+   * cuánto de eso es del auto y cuánto del chofer.
+   *
+   * El reparto de cada recorrido lo calcula el servidor a partir del trato
+   * del vehículo. Si la API todavía no lo envía (la vista previa habla con la
+   * API de producción, que aún no lo tiene), la tarjeta no se muestra: unos
+   * ceros que parecen reales serían peor que no enseñar nada.
+   */
+  const liquidacion = useMemo(() => {
+    const lista = Object.values(recorridosMensuales).flat();
+    const disponible = lista.length > 0 && lista.every((r) => r.parte_auto !== undefined);
+    if (!disponible) return { disponible: false, filas: [], auto: 0, chofer: 0 };
+
+    const porVehiculo = new Map();
+    lista.forEach((r) => {
+      const clave = r.vehiculo_id ?? 'sin-vehiculo';
+      const fila = porVehiculo.get(clave) ?? {
+        clave,
+        vehiculoId: r.vehiculo_id,
+        descripcion: r.vehiculo_descripcion || 'Sin vehículo',
+        placa: r.vehiculo_placa || '',
+        recorridos: [],
+        viajes: 0, cobrado: 0, auto: 0, chofer: 0,
+      };
+      fila.recorridos.push(r);
+      fila.viajes += 1;
+      fila.cobrado += importe(r);
+      fila.auto += parseFloat(r.parte_auto) || 0;
+      fila.chofer += parseFloat(r.parte_chofer) || 0;
+      porVehiculo.set(clave, fila);
+    });
+
+    const filas = [...porVehiculo.values()].sort((a, b) => b.cobrado - a.cobrado);
+    return {
+      disponible: true,
+      filas,
+      auto: filas.reduce((s, f) => s + f.auto, 0),
+      chofer: filas.reduce((s, f) => s + f.chofer, 0),
+    };
+  }, [recorridosMensuales]);
+
+  /** El documento para entregar al dueño de un auto: solo lo suyo. */
+  const exportarLiquidacion = async (fila) => {
+    try {
+      await generarLiquidacionPdf({
+        vehiculo: { descripcion: fila.descripcion, placa: fila.placa },
+        recorridos: fila.recorridos,
+        mes: mesActual,
+        anio: anioActual,
+        usuario: { nombre: user?.nombre, usuario: user?.usuario },
+      });
+      showAlert('success', `Liquidación de ${fila.descripcion} generada`);
+    } catch (error) {
+      console.error(error);
+      showAlert('error', 'No se pudo generar la liquidación');
+    }
+  };
 
   /** Días del mes con algo registrado, venga de donde venga. */
   const diasConActividad = useMemo(() => (
@@ -875,6 +935,73 @@ const Dashboard = () => {
           </Card>
         )}
       </div>
+
+      {/* Liquidación: cuánto de lo cobrado es del auto y cuánto del chofer.
+          Solo va con recorridos, que es donde intervienen los autos. */}
+      {puedeRecorridos && !cargando && liquidacion.disponible && (
+        <Card padding="p-0" className="mb-4 overflow-hidden">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-separator/50 p-5">
+            <div className="flex items-center gap-2">
+              <HandCoins size={18} strokeWidth={2.1} className="text-accent" />
+              <h2 className="text-headline font-semibold text-label">Liquidación del transporte</h2>
+            </div>
+            <p className="text-footnote text-label-secondary">
+              {nombresMeses[mesActual - 1]} {anioActual}
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 border-b border-separator/50">
+            <div className="border-r border-separator/50 p-5">
+              <p className="text-footnote font-medium text-label-secondary">Para los autos</p>
+              <p className="tabular mt-1 text-title1 font-semibold text-label">{dinero.format(liquidacion.auto)}</p>
+              <p className="mt-0.5 text-footnote text-label-tertiary">Lo que hay que entregar</p>
+            </div>
+            <div className="p-5">
+              <p className="text-footnote font-medium text-label-secondary">Para el chofer</p>
+              <p className="tabular mt-1 text-title1 font-semibold text-positive">{dinero.format(liquidacion.chofer)}</p>
+              <p className="mt-0.5 text-footnote text-label-tertiary">Lo que queda</p>
+            </div>
+          </div>
+
+          <ul className="divide-y divide-separator/50">
+            {liquidacion.filas.map((fila) => (
+              <li key={fila.clave} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-3.5">
+                <div className="min-w-0 flex-1 basis-40">
+                  <p className="truncate text-subhead font-medium text-label">{fila.descripcion}</p>
+                  <p className="tabular text-footnote text-label-tertiary">
+                    {fila.viajes} {fila.viajes === 1 ? 'viaje' : 'viajes'} · {dinero.format(fila.cobrado)} cobrado
+                  </p>
+                </div>
+
+                <dl className="tabular flex items-center gap-5 text-right">
+                  <div>
+                    <dt className="text-caption text-label-tertiary">Auto</dt>
+                    <dd className="text-subhead font-semibold text-label">{dinero.format(fila.auto)}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-caption text-label-tertiary">Chofer</dt>
+                    <dd className="text-subhead font-semibold text-positive">{dinero.format(fila.chofer)}</dd>
+                  </div>
+                </dl>
+
+                {/* Solo hay documento que entregar si el auto se lleva algo. */}
+                {fila.auto > 0 ? (
+                  <Button
+                    variant="secondary" size="sm"
+                    onClick={() => exportarLiquidacion(fila)}
+                    icon={<FileDown size={14} strokeWidth={2.1} />}
+                    aria-label={`Descargar la liquidación de ${fila.descripcion}`}
+                  >
+                    PDF
+                  </Button>
+                ) : (
+                  <span className="w-[4.25rem] text-center text-caption text-label-tertiary">No cobra</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
 
       {/* Calendario + actividad: recorridos y riegos sobre el mismo mes */}
       {cargando ? (

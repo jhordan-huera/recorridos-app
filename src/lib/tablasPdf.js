@@ -193,3 +193,49 @@ export const tablaDeRiegos = (doc, autoTable, {
 
   return doc.lastAutoTable.finalY;
 };
+
+/**
+ * Detalle de la liquidación de un vehículo: cada viaje con lo cobrado y lo
+ * que le corresponde al auto. Es lo que el dueño del auto necesita para
+ * comprobar la cifra que recibe, viaje por viaje.
+ */
+export const tablaDeLiquidacion = (doc, autoTable, {
+  recorridos, mes, anio, startY, numeroDoc, periodo, util, derecha,
+}) => {
+  let ultimoDia = null;
+  const filas = recorridos.map((r) => {
+    const dia = diaDe(r);
+    const mostrarDia = dia !== ultimoDia;
+    ultimoDia = dia;
+    return [
+      mostrarDia ? etiquetaDia(dia, mes, anio) : '',
+      hora(r.hora_inicio),
+      TIPO[r.tipo_recorrido] || r.tipo_recorrido || '—',
+      dinero.format(parseFloat(r.costo) || 0),
+      dinero.format(parseFloat(r.parte_auto) || 0),
+    ];
+  });
+
+  autoTable(doc, {
+    ...ESTILOS,
+    startY,
+    margin: { left: MARGEN, right: MARGEN, top: 30, bottom: 24 },
+    head: [['Día', 'Hora', 'Tipo', 'Cobrado', 'Para el auto']],
+    body: filas,
+    columnStyles: {
+      0: { cellWidth: 24, fontStyle: 'bold' },
+      1: { cellWidth: 20, textColor: COLOR.suave },
+      2: { cellWidth: 'auto', textColor: COLOR.suave },
+      3: { cellWidth: 30, halign: 'right', textColor: COLOR.suave },
+      4: { cellWidth: 34, halign: 'right', fontStyle: 'bold' },
+    },
+    didParseCell: ({ column, cell, section }) => {
+      if (section === 'head' && column.index >= 3) cell.styles.halign = 'right';
+    },
+    didDrawPage: cabeceraDeContinuacion(doc, {
+      etiqueta: 'Liquidación', numeroDoc, periodo, util, derecha,
+    }),
+  });
+
+  return doc.lastAutoTable.finalY;
+};
