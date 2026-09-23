@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { motion, useReducedMotion } from 'motion/react';
+import { useReducedMotion } from 'motion/react';
 import {
   Users, Route as RouteIcon, Calendar as CalendarIcon,
-  ChevronLeft, ChevronRight, Clock, Trash2, Plus, Droplets, FileDown,
+  ChevronRight, Clock, Trash2, Plus, Droplets, FileDown,
   TrendingUp, HandCoins, Wallet, CalendarCheck, PieChart, BarChart3,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -36,8 +36,9 @@ import GraficoMeses from '../components/resumen/GraficoMeses';
 import BurbujasTipos from '../components/resumen/BurbujasTipos';
 import { PALETA_GRAFICO } from '../components/resumen/paleta';
 import EstadoDelMes from '../components/resumen/EstadoDelMes';
+import SelectorDeMes from '../components/ui/SelectorDeMes';
 import { MESES as nombresMeses, rangoDelMes, diaDeFecha, dosDigitos, hoyISO, horaActual } from '../lib/fechas';
-import { springSnappy, haptics } from '../lib/motion';
+import { haptics } from '../lib/motion';
 
 const dinero = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
 
@@ -818,28 +819,6 @@ const Dashboard = () => {
     behavior: reduceMotion ? 'auto' : 'smooth', block: 'start',
   });
 
-  const MonthStepper = () => (
-    <div className="flex items-center gap-0.5 rounded-full border border-separator/70 bg-surface p-0.5">
-      <motion.button
-        type="button" onClick={() => cambiarMes(-1)} aria-label="Mes anterior"
-        whileTap={reduceMotion ? { opacity: 0.6 } : { scale: 0.9 }} transition={springSnappy}
-        className="tappable rounded-full p-1.5 text-label-secondary transition-colors hover:bg-fill/12 hover:text-label"
-      >
-        <ChevronLeft size={17} strokeWidth={2.2} />
-      </motion.button>
-      <span className="min-w-[8.5rem] text-center text-footnote font-semibold text-label">
-        {nombresMeses[mesActual - 1]} <span className="tabular font-normal text-label-tertiary">{anioActual}</span>
-      </span>
-      <motion.button
-        type="button" onClick={() => cambiarMes(1)} aria-label="Mes siguiente"
-        whileTap={reduceMotion ? { opacity: 0.6 } : { scale: 0.9 }} transition={springSnappy}
-        className="tappable rounded-full p-1.5 text-label-secondary transition-colors hover:bg-fill/12 hover:text-label"
-      >
-        <ChevronRight size={17} strokeWidth={2.2} />
-      </motion.button>
-    </div>
-  );
-
   return (
     <div className="pb-4">
       {/* ── Cabecera ────────────────────────────────────────────────────────
@@ -859,7 +838,7 @@ const Dashboard = () => {
         <div className="flex flex-wrap items-center gap-2">
           {/* El mes gobierna toda la pantalla —cifras, barras y calendario—,
               así que vive en la cabecera y no dentro de una tarjeta. */}
-          <MonthStepper />
+          <SelectorDeMes mes={mesActual} anio={anioActual} onCambiar={cambiarMes} />
 
           {/* Con los dos servicios se emite UN documento con su total; con
               uno solo, el informe propio de ese servicio. */}
