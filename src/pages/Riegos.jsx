@@ -68,10 +68,13 @@ const Riegos = () => {
 
   useEffect(() => { cargar(); }, [cargar]);
 
+  // Del más reciente al más antiguo, como Recorridos y la Actividad del
+  // Resumen: lo último que se registró es lo que se viene a comprobar. El PDF
+  // no depende de este orden; ordena por su cuenta, cronológicamente.
   const ordenados = useMemo(
     () => [...riegos].sort((a, b) => (a.fecha === b.fecha
-      ? String(a.hora).localeCompare(String(b.hora))
-      : String(a.fecha).localeCompare(String(b.fecha)))),
+      ? String(b.hora).localeCompare(String(a.hora))
+      : String(b.fecha).localeCompare(String(a.fecha)))),
     [riegos]
   );
 

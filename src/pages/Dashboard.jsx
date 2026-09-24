@@ -202,7 +202,7 @@ const EsqueletoCalendario = () => (
 );
 
 const EsqueletoActividad = () => (
-  <Card padding="p-0" className="flex h-[24rem] flex-col overflow-hidden xl:col-span-4 xl:h-[32rem]">
+  <Card padding="p-0" className="flex h-[24rem] flex-col overflow-hidden xl:col-span-4 xl:h-auto">
     <div className="border-b border-separator/50 p-5">
       <Skeleton variant="bare" className="h-4 w-28" />
     </div>
@@ -478,6 +478,21 @@ const Dashboard = () => {
       showAlert('error', 'No se pudo generar la liquidación');
     }
   };
+
+  /**
+   * Lo registrado en un día, recorridos y riegos juntos, del más reciente al
+   * más antiguo. Antes iban primero todos los recorridos por la mañana y
+   * luego los riegos, así que un riego de las 17:30 salía debajo de un
+   * recorrido de las 06:45.
+   */
+  const registrosDelDia = (dia) => [
+    ...(recorridosMensuales[dia] || []).map((registro) => ({
+      tipo: 'recorrido', registro, hora: String(registro.hora_inicio ?? ''), clave: `recorrido-${registro.id}`,
+    })),
+    ...(riegosMensuales[dia] || []).map((registro) => ({
+      tipo: 'riego', registro, hora: String(registro.hora ?? ''), clave: `riego-${registro.id}`,
+    })),
+  ].sort((a, b) => b.hora.localeCompare(a.hora));
 
   /** Días del mes con algo registrado, venga de donde venga. */
   const diasConActividad = useMemo(() => (
@@ -1174,17 +1189,22 @@ const Dashboard = () => {
           </Card>
 
           {/* Actividad reciente */}
-          {/* Al lado del calendario (xl) es un panel de alto fijo con su propio
-              desplazamiento. Apilado, en teléfono y tableta, crece con su
-              contenido: una lista que se desplaza dentro de una página que
-              también se desplaza atrapa el dedo en la que no toca. */}
-          <Card padding="p-0" className="flex flex-col overflow-hidden xl:col-span-4 xl:h-[32rem]">
+          {/* Al lado del calendario (xl) mide exactamente lo mismo que él: la
+              fila de la rejilla estira la tarjeta, y la lista va en una capa
+              absoluta que no empuja la altura, así que manda el calendario y
+              lo que sobra se desplaza dentro. Antes tenía un alto fijo y se
+              quedaba corta, con un hueco debajo.
+              Apilado, en teléfono y tableta, crece con su contenido: una lista
+              que se desplaza dentro de una página que también se desplaza
+              atrapa el dedo en la que no toca. */}
+          <Card padding="p-0" className="flex flex-col overflow-hidden xl:col-span-4">
             <div className="flex items-center gap-2 border-b border-separator/50 p-5">
               <Clock size={17} strokeWidth={2.1} className="text-positive" />
               <h2 className="text-headline font-semibold text-label">Actividad</h2>
             </div>
 
-            <div className="scroll-area flex-1 space-y-5 p-4">
+            <div className="relative flex-1 xl:min-h-0">
+            <div className="scroll-area space-y-5 p-4 xl:absolute xl:inset-0">
               {diasConActividad.length > 0 ? (
                 diasConActividad.map((dia) => (
                   <section key={dia}>
@@ -1193,14 +1213,42 @@ const Dashboard = () => {
                     </h3>
 
                     <div className="space-y-2">
-                      {(recorridosMensuales[dia] || []).map((recorrido, index) => {
+                      {registrosDelDia(dia).map(({ tipo, registro: recorrido, clave }) => {
+                        // Los riegos se ven aquí, pero se editan en su pantalla:
+                        // un mismo registro con dos sitios donde tocarlo acaba
+                        // en dos comportamientos distintos.
+                        if (tipo === 'riego') {
+                          const riego = recorrido;
+                          return (
+                            <div
+                              key={clave}
+                              className="flex items-center justify-between gap-2 rounded-control border border-separator/50 bg-surface-secondary p-3"
+                            >
+                              <div className="flex min-w-0 items-center gap-2.5">
+                                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-field bg-info/14 text-info">
+                                  <Droplets size={15} strokeWidth={2} />
+                                </span>
+                                <div className="min-w-0">
+                                  <p className="text-subhead font-medium text-label">Riego</p>
+                                  <p className="tabular text-footnote text-label-tertiary">
+                                    {formatearHora(riego.hora)}
+                                  </p>
+                                </div>
+                              </div>
+                              <span className="tabular shrink-0 text-subhead font-medium text-label">
+                                {dinero.format(parseFloat(riego.costo) || 0)}
+                              </span>
+                            </div>
+                          );
+                        }
+
                         const totalPasajeros = recorrido.total_ninos !== undefined
                           ? recorrido.total_ninos
                           : (recorrido.ninos?.length || 0);
 
                         return (
                           <div
-                            key={`recorrido-${index}`}
+                            key={clave}
                             className="rounded-control border border-separator/50 bg-surface-secondary p-3"
                           >
                             <div className="mb-2 flex items-center justify-between gap-2">
@@ -1239,30 +1287,6 @@ const Dashboard = () => {
                         );
                       })}
 
-                      {/* Los riegos se ven aquí, pero se editan en su pantalla:
-                          un mismo registro con dos sitios donde tocarlo acaba
-                          en dos comportamientos distintos. */}
-                      {(riegosMensuales[dia] || []).map((riego, index) => (
-                        <div
-                          key={`riego-${index}`}
-                          className="flex items-center justify-between gap-2 rounded-control border border-separator/50 bg-surface-secondary p-3"
-                        >
-                          <div className="flex min-w-0 items-center gap-2.5">
-                            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-field bg-info/14 text-info">
-                              <Droplets size={15} strokeWidth={2} />
-                            </span>
-                            <div className="min-w-0">
-                              <p className="text-subhead font-medium text-label">Riego</p>
-                              <p className="tabular text-footnote text-label-tertiary">
-                                {formatearHora(riego.hora)}
-                              </p>
-                            </div>
-                          </div>
-                          <span className="tabular shrink-0 text-subhead font-medium text-label">
-                            {dinero.format(parseFloat(riego.costo) || 0)}
-                          </span>
-                        </div>
-                      ))}
                     </div>
                   </section>
                 ))
@@ -1274,6 +1298,7 @@ const Dashboard = () => {
                   <p className="text-subhead text-label-secondary">Sin actividad este mes</p>
                 </div>
               )}
+            </div>
             </div>
           </Card>
         </div>
