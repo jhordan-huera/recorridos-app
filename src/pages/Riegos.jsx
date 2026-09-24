@@ -9,7 +9,7 @@ import { useAuth } from '../context/AuthContext';
 import { usePendientes } from '../context/PendientesContext';
 import { useRecargaAlSincronizar } from '../hooks/useRecargaAlSincronizar';
 import {
-  getAllRiegos, deleteRiego, getCierres, mensajeDeError, fueBien, mensajeDeRespuesta, esFalloDeRed,
+  getAllRiegos, getCierres, mensajeDeError, fueBien, mensajeDeRespuesta,
 } from '../services/api';
 import { unirConPendientes, pendientesDelMes } from '../lib/pendientes';
 import { generarReporteRiegosPdf } from '../lib/reporteRiegosPdf.js';
@@ -38,7 +38,7 @@ const etiquetaFecha = (fecha) => {
 const Riegos = () => {
   const { showAlert } = useAlert();
   const { user } = useAuth();
-  const { pendientes, descartar } = usePendientes();
+  const { pendientes, borrar } = usePendientes();
   const reduceMotion = useReducedMotion();
 
   const ahora = new Date();
@@ -132,19 +132,17 @@ const Riegos = () => {
     if (!aEliminar) return;
     setBorrando(true);
     try {
-      // Uno que aún no se ha enviado solo existe en este teléfono: se descarta.
-      if (aEliminar._pendiente) {
-        await descartar(aEliminar.id);
-        showAlert('success', 'Riego descartado');
-        return;
-      }
-      const respuesta = await deleteRiego(aEliminar.id);
-      if (fueBien(respuesta)) { showAlert('success', 'Riego eliminado'); cargar(); }
-      else showAlert('error', mensajeDeRespuesta(respuesta));
+      // Sin conexión se guarda el borrado y el riego deja de verse ya.
+      const { descartado, guardadoSinConexion, respuesta } = await borrar({ tipo: 'riego', registro: aEliminar });
+      if (descartado) showAlert('success', 'Riego descartado');
+      else if (guardadoSinConexion) {
+        showAlert('info', 'Sin conexión: el riego ya no aparece y se borrará del servidor cuando vuelva la conexión.', 6000);
+      } else if (fueBien(respuesta)) {
+        showAlert('success', 'Riego eliminado');
+        cargar({ silencioso: true });
+      } else showAlert('error', mensajeDeRespuesta(respuesta));
     } catch (error) {
-      showAlert('error', esFalloDeRed(error)
-        ? 'Sin conexión: para borrar un riego que ya está en el servidor hace falta internet.'
-        : 'No se pudo eliminar: ' + mensajeDeError(error));
+      showAlert('error', 'No se pudo eliminar: ' + mensajeDeError(error));
     } finally {
       setBorrando(false);
       setShowDeleteModal(false);

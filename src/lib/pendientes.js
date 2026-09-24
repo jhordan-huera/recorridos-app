@@ -1,11 +1,13 @@
 import { PENDIENTES, todos, guardar, borrar, pedirQueNoSeBorre } from './almacen';
 import { estaEnLinea } from './conexion';
 import {
-  createRiego, createRecorrido, updateRiego, updateRecorrido, mensajeDeError, esFalloDeRed,
+  createRiego, createRecorrido, updateRiego, updateRecorrido, deleteRiego, deleteRecorrido,
+  mensajeDeError, esFalloDeRed,
 } from '../services/api';
 
 /**
- * Registros hechos sin conexión, a la espera de llegar al servidor.
+ * Cambios hechos sin conexión, a la espera de llegar al servidor: altas de
+ * riegos y recorridos, y borrados.
  *
  * Cada alta lleva un id generado aquí. Si no hay conexión se guarda en el
  * teléfono con ese id y se envía más tarde. Como el id viaja con el alta, el
@@ -13,7 +15,11 @@ import {
  * puede reintentar siempre que haya dudas, que es justo lo que pasa cuando
  * la señal se corta a mitad de un envío.
  *
- * Cada registro es de la cuenta que lo hizo (`userId`) y solo se envía con esa
+ * Un borrado sin conexión (`accion: 'borrar'`) quita el registro de la vista
+ * al momento y se manda al servidor después. Repetirlo tampoco hace daño: si
+ * el registro ya no estaba, cuenta como hecho.
+ *
+ * Cada cambio es de la cuenta que lo hizo (`userId`) y solo se envía con esa
  * cuenta abierta. Cerrar sesión no lo borra: sale al volver a entrar.
  *
  * Estados:
@@ -37,6 +43,11 @@ const COSTO_RIEGO_POR_DEFECTO = 1;
 
 const CREAR = { riego: createRiego, recorrido: createRecorrido };
 const ACTUALIZAR = { riego: updateRiego, recorrido: updateRecorrido };
+const BORRAR = { riego: deleteRiego, recorrido: deleteRecorrido };
+
+/** Los borrados van con su propia clave: el id del registro ya lo usa su alta. */
+const claveDeBorrado = (registroId) => `borrar:${registroId}`;
+export const esBorrado = (item) => item?.accion === 'borrar';
 
 /** UUID v4. `randomUUID` falta en navegadores algo antiguos (iOS < 15.4). */
 export const nuevoId = () => {
@@ -83,6 +94,15 @@ const poner = async (item) => {
 const quitar = async (id) => {
   await borrar(PENDIENTES, id).catch(() => {});
   publicar({ items: foto.items.filter((i) => i.id !== id) });
+};
+
+/**
+ * Deja de enseñar el alta ya enviada de un registro. Hace falta al borrarlo:
+ * si no, se seguiría viendo hasta que caducara, aunque ya no exista.
+ */
+const olvidarEnviado = (registroId) => {
+  const sigue = (i) => i.id === registroId && i.estado === 'enviado';
+  if (foto.items.some(sigue)) publicar({ items: foto.items.filter((i) => !sigue(i)) });
 };
 
 const marcarEnviado = async (item, registro) => {
@@ -138,10 +158,54 @@ export const registrar = async ({ userId, tipo, datos, vista }) => {
 /** Cambia un registro que aún no se ha enviado. Vuelve a la cola si estaba rechazado. */
 export const editarPendiente = async (id, { datos, vista }) => {
   const item = foto.items.find((i) => i.id === id);
-  if (!item || item.estado === 'enviado') return;
+  if (!item || item.estado === 'enviado' || esBorrado(item)) return;
   await poner({ ...item, datos, vista: vista ?? item.vista, estado: 'pendiente', error: null, editado: true });
 };
 
+/**
+ * Borra un riego o un recorrido.
+ *
+ *  - Si es un alta que aún no se envió, solo existe aquí: se descarta.
+ *  - Si no, se borra en el servidor; sin conexión, el borrado se guarda y
+ *    el registro deja de verse ya.
+ *
+ * Devuelve `{ descartado }`, `{ guardadoSinConexion }` o `{ respuesta }`. Un
+ * error del servidor (mes terminado…) se lanza para enseñarlo.
+ */
+export const borrarRegistro = async ({ userId, tipo, registro }) => {
+  const alta = foto.items.find((i) => i.id === registro.id && !esBorrado(i));
+  if (alta && alta.estado !== 'enviado') {
+    await quitar(alta.id);
+    return { descartado: true };
+  }
+
+  const guardarAqui = async () => {
+    // Una copia sin las marcas de pantalla, para enseñar en la lista de
+    // pendientes qué se va a borrar.
+    const { _pendiente: _p, _error: _e, ...copia } = registro;
+    await cargarPendientes();
+    await poner({
+      id: claveDeBorrado(registro.id), accion: 'borrar', registroId: registro.id,
+      userId, tipo, registro: copia,
+      creadoEn: Date.now(), estado: 'pendiente', error: null,
+    });
+    olvidarEnviado(registro.id);
+    pedirQueNoSeBorre();
+    return { guardadoSinConexion: true };
+  };
+
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return guardarAqui();
+  try {
+    const respuesta = await BORRAR[tipo](registro.id, opcionesDeEnvio());
+    olvidarEnviado(registro.id);
+    return { respuesta };
+  } catch (error) {
+    if (esFalloDeRed(error)) return guardarAqui();
+    throw error;
+  }
+};
+
+/** Quita un cambio de la cola: un alta se pierde; un borrado se cancela y el registro vuelve. */
 export const descartarPendiente = (id) => quitar(id);
 
 export const reintentarPendiente = async (id) => {
@@ -155,6 +219,19 @@ export const reintentarPendiente = async (id) => {
  */
 const enviarUno = async (item) => {
   try {
+    if (esBorrado(item)) {
+      try {
+        await BORRAR[item.tipo](item.registroId, opcionesDeEnvio());
+      } catch (error) {
+        // 404: ya no estaba. Lo borró antes este mismo envío (se perdió la
+        // respuesta) u otra sesión. Lo que se quería ya está hecho.
+        if (error.response?.status !== 404) throw error;
+      }
+      olvidarEnviado(item.registroId);
+      await marcarEnviado(item, item.registro);
+      return 'enviado';
+    }
+
     const respuesta = await CREAR[item.tipo]({ id: item.id, ...item.datos }, opcionesDeEnvio());
     let registro = respuesta.data?.data ?? null;
 
@@ -257,6 +334,7 @@ export const vistaDeRecorrido = (datos, vehiculos = [], ninosConNombre = []) => 
  * más `_pendiente` ('pendiente' | 'rechazado') y `_error` para marcarlo.
  */
 export const comoRegistro = (item) => {
+  if (esBorrado(item)) return item.registro;
   if (item.estado === 'enviado') return item.registro;
   const marca = { id: item.id, activo: true, _pendiente: item.estado, _error: item.error };
 
@@ -277,23 +355,37 @@ export const comoRegistro = (item) => {
 };
 
 /**
- * Suma a una lista del servidor los registros de ese tipo que siguen en el
- * teléfono (o que acaban de llegar y la lista aún no trae). Si el servidor ya
- * trae uno, gana el del servidor. Con `mes` ('YYYY-MM'), solo los de ese mes.
+ * Aplica a una lista del servidor los cambios de ese tipo hechos en el
+ * teléfono:
+ *  - suma las altas que aún no llegaron (o que acaban de llegar y la lista
+ *    todavía no trae; si ya la trae, gana la del servidor);
+ *  - quita lo borrado sin conexión, aunque el servidor aún no lo sepa. Si el
+ *    servidor rechazó el borrado, el registro sigue existiendo y vuelve.
+ * Con `mes` ('YYYY-MM'), solo altas de ese mes.
  */
 export const unirConPendientes = (lista, pendientes, tipo, { mes } = {}) => {
-  const propios = pendientes
-    .filter((p) => p.tipo === tipo)
+  const delTipo = pendientes.filter((p) => p.tipo === tipo);
+  const borrados = new Set(delTipo
+    .filter((p) => esBorrado(p) && p.estado !== 'rechazado')
+    .map((p) => p.registroId));
+
+  const altas = delTipo
+    .filter((p) => !esBorrado(p))
     .map(comoRegistro)
-    .filter((r) => r && (!mes || String(r.fecha ?? '').startsWith(mes)));
-  if (propios.length === 0) return lista;
+    .filter((r) => r && !borrados.has(r.id) && (!mes || String(r.fecha ?? '').startsWith(mes)));
+
+  const visibles = borrados.size ? lista.filter((r) => !borrados.has(r.id)) : lista;
+  if (altas.length === 0) return visibles;
   const ids = new Set(lista.map((r) => r.id));
-  return [...lista, ...propios.filter((r) => !ids.has(r.id))];
+  return [...visibles, ...altas.filter((r) => !ids.has(r.id))];
 };
 
-/** Pendientes (sin enviar todavía) de un tipo en un mes `YYYY-MM`. */
+/** La fecha de lo que toca un cambio: la del alta o la del registro que se borra. */
+export const fechaDelCambio = (p) => (esBorrado(p) ? p.registro?.fecha : p.datos?.fecha);
+
+/** Cambios (sin enviar todavía) de un tipo en un mes `YYYY-MM`. */
 export const pendientesDelMes = (pendientes, clave, tipo = null) => pendientes.filter((p) => (
   p.estado !== 'enviado'
   && (!tipo || p.tipo === tipo)
-  && String(p.datos?.fecha ?? '').startsWith(clave)
+  && String(fechaDelCambio(p) ?? '').slice(0, 7) === clave
 ));

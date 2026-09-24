@@ -439,7 +439,7 @@ export const getRecorridoById = (id) => api.get(`/recorridos/${id}`);
 export const getRecorridosByFecha = (fecha) => api.get(`/recorridos/fecha/${fecha}`);
 export const createRecorrido = (data, opciones) => api.post('/recorridos', data, opciones);
 export const updateRecorrido = (id, data, opciones) => api.put(`/recorridos/${id}`, data, opciones);
-export const deleteRecorrido = (id) => api.delete(`/recorridos/${id}`);
+export const deleteRecorrido = (id, opciones) => api.delete(`/recorridos/${id}`, opciones);
 export const addNinoToRecorrido = (data) => api.post('/recorridos/ninos', data);
 export const removeNinoFromRecorrido = (id) => api.delete(`/recorridos/ninos/${id}`);
 export const updateNotaNinoRecorrido = (id, notas) => api.patch(`/recorridos/ninos/${id}`, { notas });
@@ -486,7 +486,7 @@ export const getAllRiegos = async (filtros = {}) => {
 export const getRiegoById = (id) => api.get(`/riegos/${id}`);
 export const createRiego = (data, opciones) => api.post('/riegos', data, opciones);
 export const updateRiego = (id, data, opciones) => api.put(`/riegos/${id}`, data, opciones);
-export const deleteRiego = (id) => api.delete(`/riegos/${id}`);
+export const deleteRiego = (id, opciones) => api.delete(`/riegos/${id}`, opciones);
 
 /* ─────────────────────────────────────────────────────────────────────────────
  * Cierre de mes (cada usuario, los suyos) y cobros (solo administrador)

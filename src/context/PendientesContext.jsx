@@ -6,7 +6,7 @@ import { useAlert } from './AlertContext';
 import { useConexion } from '../lib/conexion';
 import {
   suscribir, leerFoto, cargarPendientes, enviarPendientes, registrar as registrarAlta,
-  editarPendiente, descartarPendiente, reintentarPendiente,
+  borrarRegistro, editarPendiente, descartarPendiente, reintentarPendiente,
 } from '../lib/pendientes';
 
 const PendientesContext = createContext(null);
@@ -43,13 +43,13 @@ export const PendientesProvider = ({ children }) => {
         recorrido: antes.recorrido + (porTipo.recorrido || 0),
       }));
       showAlert('success', enviados === 1
-        ? 'Se envió 1 registro que estaba guardado sin conexión'
-        : `Se enviaron ${enviados} registros que estaban guardados sin conexión`);
+        ? 'Se envió 1 cambio que estaba guardado sin conexión'
+        : `Se enviaron ${enviados} cambios que estaban guardados sin conexión`);
     }
     if (rechazados > 0) {
       showAlert('error', rechazados === 1
-        ? 'Un registro guardado sin conexión no se pudo enviar. Revísalo arriba.'
-        : `${rechazados} registros guardados sin conexión no se pudieron enviar. Revísalos arriba.`, 7000);
+        ? 'Un cambio guardado sin conexión no se pudo enviar. Revísalo arriba.'
+        : `${rechazados} cambios guardados sin conexión no se pudieron enviar. Revísalos arriba.`, 7000);
     }
   }, [userId, showAlert]);
 
@@ -88,6 +88,11 @@ export const PendientesProvider = ({ children }) => {
     [userId]
   );
 
+  const borrar = useCallback(
+    (baja) => borrarRegistro({ ...baja, userId }),
+    [userId]
+  );
+
   const reintentar = useCallback(async (id) => {
     await reintentarPendiente(id);
     enviarAhora();
@@ -101,11 +106,12 @@ export const PendientesProvider = ({ children }) => {
     enviando: foto.enviando,
     envios,
     registrar,
+    borrar,
     enviarAhora,
     editar: editarPendiente,
     descartar: descartarPendiente,
     reintentar,
-  }), [mios, foto.enviando, envios, registrar, enviarAhora, reintentar]);
+  }), [mios, foto.enviando, envios, registrar, borrar, enviarAhora, reintentar]);
 
   return <PendientesContext.Provider value={value}>{children}</PendientesContext.Provider>;
 };
