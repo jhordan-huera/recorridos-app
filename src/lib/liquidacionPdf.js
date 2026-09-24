@@ -65,11 +65,11 @@ export const construirLiquidacionPdf = async ({ vehiculo = {}, recorridos = [], 
   });
 
   bloque(doc, {
-    x: MARGEN, y: 42, etiqueta: 'Vehículo',
+    x: MARGEN, y: 42, ancho: 54, etiqueta: 'Vehículo',
     valor: nombreVehiculo, detalle: vehiculo.placa || '',
   });
   bloque(doc, {
-    x: MARGEN + 58, y: 42, etiqueta: 'Periodo',
+    x: MARGEN + 58, y: 42, ancho: derecha - 60 - (MARGEN + 58) - 4, etiqueta: 'Periodo',
     valor: periodo, detalle: rango,
   });
 

@@ -12,13 +12,13 @@ import Card from '../ui/Card';
  * `tendencia.bueno` decide el color, no la dirección: más recorridos es
  * bueno, pero más gasto no.
  */
-const Kpi = ({ icono: Icono, etiqueta, valor, tendencia = null }) => {
+const Kpi = ({ icono: Icono, etiqueta, valor, tendencia = null, className = '' }) => {
   const color = !tendencia || tendencia.direccion === 'igual'
     ? 'text-label-tertiary'
     : tendencia.bueno ? 'text-positive' : 'text-caution';
 
   return (
-    <Card className="flex items-center gap-4">
+    <Card className={`flex items-center gap-4 ${className}`}>
       <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-fill/10 text-label">
         <Icono size={20} strokeWidth={1.9} />
       </span>

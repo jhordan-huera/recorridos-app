@@ -51,16 +51,40 @@ export const etiquetaDia = (dia, mes, anio) => {
 };
 
 /** Etiqueta pequeña en versalitas + valor debajo. */
-export const bloque = (doc, { x, y, etiqueta, valor, detalle, alinear = 'left', tam = 10.5 }) => {
+/**
+ * Un texto partido en como mucho `maxLineas` líneas de `ancho` mm. Si ni así
+ * cabe, la última se recorta con "…" en lugar de salirse de su columna.
+ */
+const ajustar = (doc, texto, ancho, maxLineas) => {
+  if (!ancho) return [texto];
+  const lineas = doc.splitTextToSize(String(texto), ancho);
+  if (lineas.length <= maxLineas) return lineas;
+  let ultima = lineas.slice(maxLineas - 1).join(' ');
+  while (ultima.length > 1 && doc.getTextWidth(`${ultima}…`) > ancho) ultima = ultima.slice(0, -1).trimEnd();
+  return [...lineas.slice(0, maxLineas - 1), `${ultima}…`];
+};
+
+/**
+ * Etiqueta, valor y detalle apilados ("Emitido por", "Periodo"...).
+ *
+ * `ancho` es lo que hay hasta la columna siguiente. Sin él, un nombre largo
+ * —"María Fernanda Salazar Villacís"— llegaba hasta el bloque de al lado y,
+ * con una palabra más, se montaba encima. El valor se parte en dos líneas y,
+ * si aun así no cabe, se recorta; el detalle baja lo que haga falta.
+ */
+export const bloque = (doc, { x, y, etiqueta, valor, detalle, alinear = 'left', tam = 10.5, ancho = null }) => {
   doc.setFont('helvetica', 'bold').setFontSize(6.2).setTextColor(...COLOR.tenue);
   doc.text(etiqueta.toUpperCase(), x, y, { align: alinear, charSpace: 0.4 });
 
   doc.setFont('helvetica', 'bold').setFontSize(tam).setTextColor(...COLOR.texto);
-  doc.text(valor, x, y + 5.6, { align: alinear });
+  const lineas = ajustar(doc, valor, ancho, 2);
+  const interlinea = tam * 0.42;   // mm por línea a este cuerpo
+  doc.text(lineas, x, y + 5.6, { align: alinear, lineHeightFactor: 1.15 });
 
   if (detalle) {
     doc.setFont('helvetica', 'normal').setFontSize(7.6).setTextColor(...COLOR.suave);
-    doc.text(detalle, x, y + 10.4, { align: alinear });
+    const extra = (lineas.length - 1) * interlinea;
+    doc.text(ajustar(doc, detalle, ancho, 1), x, y + 10.4 + extra, { align: alinear });
   }
 };
 

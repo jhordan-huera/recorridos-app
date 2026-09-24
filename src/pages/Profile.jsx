@@ -284,7 +284,7 @@ const Profile = () => {
             <SettingGroup title="Cuenta">
               <SettingRow
                 icon={CircleUser} tone="accent"
-                label="Datos personales" sublabel="Nombre y correo electrónico"
+                label="Datos personales" sublabel="Nombre y usuario"
                 onClick={() => setSection('personal')}
               />
               <SettingRow

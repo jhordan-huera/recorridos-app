@@ -16,7 +16,7 @@ const TarjetaVehiculo = ({ nombre, estado, estadoActivo, subtitulo, accion }) =>
 
     <div className="min-w-0 flex-1">
       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5">
-        <p className="truncate text-headline font-semibold text-label">{nombre}</p>
+        <p className="break-words text-headline font-semibold text-label">{nombre}</p>
         <span
           className={`flex items-center gap-1.5 text-caption2 font-semibold uppercase tracking-wide ${
             estadoActivo ? 'text-positive' : 'text-label-tertiary'

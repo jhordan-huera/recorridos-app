@@ -202,7 +202,7 @@ const EsqueletoCalendario = () => (
 );
 
 const EsqueletoActividad = () => (
-  <Card padding="p-0" className="flex h-[32rem] flex-col overflow-hidden xl:col-span-4">
+  <Card padding="p-0" className="flex h-[24rem] flex-col overflow-hidden xl:col-span-4 xl:h-[32rem]">
     <div className="border-b border-separator/50 p-5">
       <Skeleton variant="bare" className="h-4 w-28" />
     </div>
@@ -897,7 +897,11 @@ const Dashboard = () => {
       <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {cargando
           ? [0, 1, 2].map((i) => <EsqueletoKpi key={i} />)
-          : kpis.map(({ clave, ...kpi }) => <Kpi key={clave} {...kpi} />)}
+          : kpis.map(({ clave, ...kpi }, i) => (
+            // En tableta van dos columnas: el gasto ocupa la fila entera y las
+            // otras dos quedan juntas debajo, en vez de una sola a medias.
+            <Kpi key={clave} {...kpi} className={i === 0 ? 'sm:col-span-2 xl:col-span-1' : ''} />
+          ))}
       </div>
 
       {/* ── Gasto por mes y tipos de recorrido ──────────────────────────────── */}
@@ -1170,7 +1174,11 @@ const Dashboard = () => {
           </Card>
 
           {/* Actividad reciente */}
-          <Card padding="p-0" className="flex h-[32rem] flex-col overflow-hidden xl:col-span-4">
+          {/* Al lado del calendario (xl) es un panel de alto fijo con su propio
+              desplazamiento. Apilado, en teléfono y tableta, crece con su
+              contenido: una lista que se desplaza dentro de una página que
+              también se desplaza atrapa el dedo en la que no toca. */}
+          <Card padding="p-0" className="flex flex-col overflow-hidden xl:col-span-4 xl:h-[32rem]">
             <div className="flex items-center gap-2 border-b border-separator/50 p-5">
               <Clock size={17} strokeWidth={2.1} className="text-positive" />
               <h2 className="text-headline font-semibold text-label">Actividad</h2>

@@ -80,11 +80,11 @@ export const construirReporteGeneralPdf = async ({
   });
 
   bloque(doc, {
-    x: MARGEN, y: 42, etiqueta: 'Emitido por',
+    x: MARGEN, y: 42, ancho: 54, etiqueta: 'Emitido por',
     valor: usuario.nombre || '—', detalle: usuario.usuario || '',
   });
   bloque(doc, {
-    x: MARGEN + 58, y: 42, etiqueta: 'Periodo facturado',
+    x: MARGEN + 58, y: 42, ancho: derecha - 60 - (MARGEN + 58) - 4, etiqueta: 'Periodo facturado',
     valor: periodo, detalle: rango,
   });
 

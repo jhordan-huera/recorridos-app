@@ -221,7 +221,7 @@ const Cobros = () => {
                   </span>
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
-                      <p className="truncate text-headline font-semibold text-label">{f.nombre}</p>
+                      <p className="break-words text-headline font-semibold text-label">{f.nombre}</p>
                       <span className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-caption font-semibold ${clases}`}>
                         <Icono size={12} strokeWidth={2.4} aria-hidden="true" />
                         {texto}
@@ -246,10 +246,14 @@ const Cobros = () => {
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between gap-3 sm:justify-end">
+                {/* En el móvil una fila abierta no tiene importe ni acciones: el
+                    guion solo ocuparía una línea para no decir nada. */}
+                <div className={`flex flex-wrap items-center justify-between gap-3 sm:flex-nowrap sm:justify-end ${
+                  cerrado ? '' : 'hidden sm:flex'
+                }`}>
                   <p className="tabular text-title3 font-bold text-label">{cerrado ? dinero.format(total) : '—'}</p>
                   {cerrado && (
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 whitespace-nowrap">
                       <Button
                         variant="secondary" size="sm" className="!rounded-full"
                         onClick={() => descargar(f)} loading={ocupado === f.user_id && !confirmar}

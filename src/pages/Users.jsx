@@ -304,7 +304,7 @@ const Users = () => {
                         </Badge>
                       </div>
 
-                      <h3 className="truncate text-headline font-semibold text-label" title={user.nombre}>
+                      <h3 className="break-words text-headline font-semibold text-label">
                         {user.nombre}
                       </h3>
                       <p className="truncate text-footnote text-label-secondary" title={user.usuario}>
