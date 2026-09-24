@@ -7,6 +7,13 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      // Service worker propio (src/sw.js) en lugar del generado: abrir la app
+      // necesita "red primero, con un límite de 4 s, y si no, la copia de esta
+      // misma versión", y el generado no permite ese límite sin guardar
+      // también copias de las páginas, que pueden quedar desfasadas.
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.js',
       includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
       manifest: {
         name: 'Bitácora',
@@ -36,9 +43,8 @@ export default defineConfig({
         navigateFallback: 'index.html',
         suppressWarnings: true,
       },
-      workbox: {
+      injectManifest: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest}'],
-        navigateFallback: null,
       }
     })
   ],

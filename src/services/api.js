@@ -1,5 +1,10 @@
 import axios from 'axios';
 import { empezar, terminar } from '../lib/progress';
+import { esFalloDeRed, marcarEnLinea, marcarSinConexion, anotarCopia } from '../lib/conexion';
+import { COPIAS, leer, guardar, borrarPorPrefijo } from '../lib/almacen';
+import { dosDigitos } from '../lib/fechas';
+
+export { esFalloDeRed };
 
 /**
  * URL base de la API, desde VITE_API_URL.
@@ -38,10 +43,24 @@ export const guardarSesion = ({ access_token, refresh_token, usuario }) => {
   if (usuario) localStorage.setItem(CLAVES.user, JSON.stringify(usuario));
 };
 
+/**
+ * Cierra la sesión en este navegador.
+ *
+ * Las copias para trabajar sin conexión son datos de esta cuenta: en un
+ * teléfono compartido no se pueden quedar a la vista del siguiente. Lo
+ * pendiente de enviar NO se borra: se envía cuando esta cuenta vuelva a entrar.
+ *
+ * Devuelve la promesa del borrado de las copias. Quien vaya a recargar la
+ * página después tiene que esperarla: una recarga a medias corta el borrado.
+ */
 export const limpiarSesion = () => {
+  const userId = getCurrentUserInfo().id;
+  const borrado = userId ? borrarPorPrefijo(COPIAS, `${userId}|`).catch(() => {}) : Promise.resolve();
+
   Object.values(CLAVES).forEach((k) => localStorage.removeItem(k));
   localStorage.removeItem('authToken');    // clave del esquema anterior
   localStorage.removeItem('authUserCache');
+  return borrado;
 };
 
 // Los tokens emitidos antes del cambio de JWT_SECRET ya no son válidos.
@@ -64,9 +83,6 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
   timeout: TIEMPO_MAXIMO_MS,
 });
-
-/** true si la petición no llegó a tener respuesta: sin red o sin tiempo. */
-export const esFalloDeRed = (error) => Boolean(error) && !error.response;
 
 api.interceptors.request.use((config) => {
   const token = getAccessToken();
@@ -98,6 +114,18 @@ api.interceptors.response.use((response) => {
   return Promise.reject(error);
 });
 
+/* Estado de la conexión (lib/conexion.js): cualquier respuesta del servidor,
+   aunque sea un error, demuestra que hay conexión; una petición sin respuesta
+   demuestra que no. */
+api.interceptors.response.use((response) => {
+  marcarEnLinea();
+  return response;
+}, (error) => {
+  if (esFalloDeRed(error)) marcarSinConexion();
+  else if (error?.response) marcarEnLinea();
+  return Promise.reject(error);
+});
+
 /* ─────────────────────────────────────────────────────────────────────────────
  * Renovación automática del access token
  *
@@ -116,9 +144,10 @@ let alCerrarSesion = null;
 export const registrarCierreDeSesion = (fn) => { alCerrarSesion = fn; };
 
 const cerrarSesionForzado = () => {
-  limpiarSesion();
-  if (alCerrarSesion) alCerrarSesion();
-  else if (!window.location.pathname.startsWith('/login')) window.location.href = '/login';
+  limpiarSesion().finally(() => {
+    if (alCerrarSesion) alCerrarSesion();
+    else if (!window.location.pathname.startsWith('/login')) window.location.href = '/login';
+  });
 };
 
 const renovarToken = async () => {
@@ -159,7 +188,11 @@ api.interceptors.response.use(
 
       original.headers.Authorization = `Bearer ${nuevo}`;
       return api(original);
-    } catch {
+    } catch (errorAlRenovar) {
+      // Sin red para renovar no es una sesión muerta: se deja como está y la
+      // siguiente petición con conexión lo vuelve a intentar. Cerrarla aquí
+      // dejaría fuera a quien no puede volver a entrar hasta tener internet.
+      if (esFalloDeRed(errorAlRenovar)) return Promise.reject(errorAlRenovar);
       cerrarSesionForzado();
       return Promise.reject(error);
     }
@@ -178,6 +211,12 @@ api.interceptors.response.use(
  * de validación, `detalles` trae el campo concreto y se muestra también.
  */
 export const mensajeDeError = (error, porDefecto = 'Ha ocurrido un error') => {
+  // "Network Error" o "timeout of 20000ms exceeded" no le dicen nada a nadie.
+  if (esFalloDeRed(error)) {
+    return error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT'
+      ? 'El servidor no respondió a tiempo. Revisa tu conexión e inténtalo de nuevo.'
+      : 'Sin conexión con el servidor. Revisa tu internet e inténtalo de nuevo.';
+  }
   const cuerpo = error?.response?.data?.error;
   if (!cuerpo) return error?.message || porDefecto;
   if (typeof cuerpo === 'string') return cuerpo; // por si queda algo del formato viejo
@@ -263,12 +302,86 @@ export const obtenerTodo = async (peticion, { limite = 50, maxPaginas = 50 } = {
 const listaParams = ({ limite = 50, pagina = 1, ...resto } = {}) => ({ params: { limite, pagina, ...resto } });
 
 /* ─────────────────────────────────────────────────────────────────────────────
+ * Copias para trabajar sin conexión
+ *
+ * Cada consulta que sale bien se guarda en el teléfono. Si más tarde la misma
+ * consulta no obtiene respuesta (sin red, sin tiempo), se devuelve esa copia y
+ * la app avisa de que es lo guardado y de cuándo. Solo ante fallos de red: si
+ * el servidor contesta con un error, ese error es la verdad y se propaga.
+ *
+ * Sin copia, el error sale marcado con `sinCopia` para que la pantalla diga
+ * que no hay datos guardados, en vez de pintar ceros que parecen reales.
+ *
+ * Van por cuenta (`${userId}|…`): quien entra con otra cuenta en el mismo
+ * teléfono nunca ve las de la anterior. Se borran al cerrar sesión.
+ * ───────────────────────────────────────────────────────────────────────────── */
+const claveDeCopia = (consulta) => {
+  const userId = getCurrentUserInfo().id;
+  return userId ? `${userId}|${consulta}` : null;
+};
+
+const guardarCopia = (consulta, datos, guardadoEn = Date.now()) => {
+  const clave = claveDeCopia(consulta);
+  // Guardar la copia es un extra: si falla, la consulta sigue siendo buena.
+  if (clave) guardar(COPIAS, { datos, guardadoEn }, clave).catch(() => {});
+};
+
+const leerCopia = async (consulta) => {
+  const clave = claveDeCopia(consulta);
+  return clave ? leer(COPIAS, clave).catch(() => null) : null;
+};
+
+const sinCopia = (error) => Object.assign(error, { sinCopia: true });
+
+const conCopia = async (consulta, peticion) => {
+  try {
+    const datos = await peticion();
+    guardarCopia(consulta, datos);
+    return datos;
+  } catch (error) {
+    if (!esFalloDeRed(error)) throw error;
+    const copia = await leerCopia(consulta);
+    if (!copia) throw sinCopia(error);
+    anotarCopia(copia.guardadoEn);
+    return copia.datos;
+  }
+};
+
+/** Para las consultas que devuelven la respuesta de axios: se guarda solo el cuerpo. */
+const cuerpoConCopia = (consulta, peticion) => conCopia(consulta, async () => {
+  const { data } = await peticion();
+  return { data };
+});
+
+/**
+ * Los meses `YYYY-MM` que cubre enteros un rango desde–hasta, o null si el
+ * rango no empieza un día 1 o no acaba el último día de un mes.
+ */
+const mesesDelRango = ({ desde, hasta } = {}) => {
+  if (!/^\d{4}-\d{2}-01$/.test(desde || '') || !/^\d{4}-\d{2}-\d{2}$/.test(hasta || '')) return null;
+  const [ah, mh, dh] = hasta.split('-').map(Number);
+  if (dh !== new Date(ah, mh, 0).getDate()) return null;
+
+  const meses = [];
+  let [a, m] = desde.split('-').map(Number);
+  while (a < ah || (a === ah && m <= mh)) {
+    meses.push(`${a}-${dosDigitos(m)}`);
+    if (meses.length > 120) return null;
+    m += 1;
+    if (m > 12) { m = 1; a += 1; }
+  }
+  return meses.length ? meses : null;
+};
+
+/* ─────────────────────────────────────────────────────────────────────────────
  * AUTENTICACIÓN
  * ───────────────────────────────────────────────────────────────────────────── */
 export const login = (credentials) => api.post('/auth/login', credentials);
 // No hay registro público: las cuentas las crea un administrador en /users.
 export const refreshSession = () => api.post('/auth/refresh', { refresh_token: getRefreshToken() });
-export const logoutApi = () => api.post('/auth/logout', { refresh_token: getRefreshToken() });
+// Con poca señal no se hace esperar 20 s a quien quiere salir: si no llega,
+// la sesión se cierra en local igualmente.
+export const logoutApi = () => api.post('/auth/logout', { refresh_token: getRefreshToken() }, { timeout: 5000 });
 export const logoutAll = () => api.post('/auth/logout-all');
 export const verifyToken = () => api.get('/auth/verify');
 export const getCurrentUser = () => api.get('/auth/me');
@@ -279,7 +392,7 @@ export const changePassword = (data) => api.post('/auth/password', data);
  * USUARIOS (solo admin, salvo GET /users/:id sobre uno mismo)
  * ───────────────────────────────────────────────────────────────────────────── */
 export const getUsers = (opciones) => api.get('/users', listaParams(opciones));
-export const getAllUsers = () => obtenerTodo(getUsers);
+export const getAllUsers = () => conCopia('usuarios', () => obtenerTodo(getUsers));
 export const getUserById = (id) => api.get(`/users/${id}`);
 export const createUser = (data) => api.post('/users', data);
 export const updateUser = (id, data) => api.put(`/users/${id}`, data);
@@ -298,7 +411,7 @@ export const resetUserPassword = (id, password) => api.post(`/users/${id}/passwo
  * NIÑOS
  * ───────────────────────────────────────────────────────────────────────────── */
 export const getNinos = (opciones) => api.get('/ninos', listaParams(opciones));
-export const getAllNinos = () => obtenerTodo(getNinos);
+export const getAllNinos = () => conCopia('ninos', () => obtenerTodo(getNinos));
 export const getNinoById = (id) => api.get(`/ninos/${id}`);
 export const createNino = (data) => api.post('/ninos', data);
 export const updateNino = (id, data) => api.put(`/ninos/${id}`, data);
@@ -308,7 +421,7 @@ export const deleteNino = (id) => api.delete(`/ninos/${id}`);
  * VEHÍCULOS
  * ───────────────────────────────────────────────────────────────────────────── */
 export const getVehiculos = (opciones) => api.get('/vehiculos', listaParams(opciones));
-export const getAllVehiculos = () => obtenerTodo(getVehiculos);
+export const getAllVehiculos = () => conCopia('vehiculos', () => obtenerTodo(getVehiculos));
 export const getVehiculoById = (id) => api.get(`/vehiculos/${id}`);
 export const createVehiculo = (data) => api.post('/vehiculos', data);
 export const updateVehiculo = (id, data) => api.put(`/vehiculos/${id}`, data);
@@ -318,11 +431,14 @@ export const deleteVehiculo = (id) => api.delete(`/vehiculos/${id}`);
  * RECORRIDOS
  * ───────────────────────────────────────────────────────────────────────────── */
 export const getRecorridos = (opciones) => api.get('/recorridos', listaParams(opciones));
-export const getAllRecorridos = (filtros) => obtenerTodo((p) => getRecorridos({ ...filtros, ...p }));
+export const getAllRecorridos = (filtros) => conCopia(
+  `recorridos|${JSON.stringify(filtros ?? {})}`,
+  () => obtenerTodo((p) => getRecorridos({ ...filtros, ...p })),
+);
 export const getRecorridoById = (id) => api.get(`/recorridos/${id}`);
 export const getRecorridosByFecha = (fecha) => api.get(`/recorridos/fecha/${fecha}`);
-export const createRecorrido = (data) => api.post('/recorridos', data);
-export const updateRecorrido = (id, data) => api.put(`/recorridos/${id}`, data);
+export const createRecorrido = (data, opciones) => api.post('/recorridos', data, opciones);
+export const updateRecorrido = (id, data, opciones) => api.put(`/recorridos/${id}`, data, opciones);
 export const deleteRecorrido = (id) => api.delete(`/recorridos/${id}`);
 export const addNinoToRecorrido = (data) => api.post('/recorridos/ninos', data);
 export const removeNinoFromRecorrido = (id) => api.delete(`/recorridos/ninos/${id}`);
@@ -336,21 +452,60 @@ export const updateNotaNinoRecorrido = (id, notas) => api.patch(`/recorridos/nin
  * día discreparía del de la base de datos.
  * ───────────────────────────────────────────────────────────────────────────── */
 export const getRiegos = (opciones) => api.get('/riegos', listaParams(opciones));
-export const getAllRiegos = (filtros) => obtenerTodo((p) => getRiegos({ ...filtros, ...p }));
+const pedirRiegos = (filtros) => obtenerTodo((p) => getRiegos({ ...filtros, ...p }));
+
+/**
+ * Los riegos se piden por rangos de meses distintos: el Resumen pide seis de
+ * golpe y la pantalla de Riegos, uno. Si la copia se guardara por consulta,
+ * abrir Riegos sin conexión no encontraría nada aunque el Resumen ya hubiera
+ * traído ese mismo mes. Por eso se guardan mes a mes y, sin conexión, el rango
+ * se arma con los meses que haya.
+ */
+export const getAllRiegos = async (filtros = {}) => {
+  const soloRango = Object.keys(filtros).every((k) => k === 'desde' || k === 'hasta');
+  const meses = soloRango ? mesesDelRango(filtros) : null;
+  if (!meses) return conCopia(`riegos|${JSON.stringify(filtros)}`, () => pedirRiegos(filtros));
+
+  try {
+    const lista = await pedirRiegos(filtros);
+    const guardadoEn = Date.now();
+    meses.forEach((mes) => guardarCopia(
+      `riegos-mes|${mes}`,
+      lista.filter((r) => String(r.fecha).startsWith(mes)),
+      guardadoEn,
+    ));
+    return lista;
+  } catch (error) {
+    if (!esFalloDeRed(error)) throw error;
+    const copias = await Promise.all(meses.map((mes) => leerCopia(`riegos-mes|${mes}`)));
+    if (copias.some((c) => !c)) throw sinCopia(error);
+    anotarCopia(Math.min(...copias.map((c) => c.guardadoEn)));
+    return copias.flatMap((c) => c.datos);
+  }
+};
 export const getRiegoById = (id) => api.get(`/riegos/${id}`);
-export const createRiego = (data) => api.post('/riegos', data);
-export const updateRiego = (id, data) => api.put(`/riegos/${id}`, data);
+export const createRiego = (data, opciones) => api.post('/riegos', data, opciones);
+export const updateRiego = (id, data, opciones) => api.put(`/riegos/${id}`, data, opciones);
 export const deleteRiego = (id) => api.delete(`/riegos/${id}`);
 
 /* ─────────────────────────────────────────────────────────────────────────────
  * Cierre de mes (cada usuario, los suyos) y cobros (solo administrador)
  * ───────────────────────────────────────────────────────────────────────────── */
-export const getCierres = (anio) => api.get('/cierres', { params: anio ? { anio } : {} });
+export const getCierres = (anio) => cuerpoConCopia(
+  `cierres|${anio ?? 'todos'}`,
+  () => api.get('/cierres', { params: anio ? { anio } : {} }),
+);
 export const terminarMes = (anio, mes) => api.post('/cierres', { anio, mes });
 export const reabrirMes = (anio, mes) => api.delete(`/cierres/${anio}/${mes}`);
 
-export const getCobros = (anio, mes) => api.get('/cobros', { params: { anio, mes } });
-export const getDatosDeCobro = (userId, anio, mes) => api.get(`/cobros/${userId}/${anio}/${mes}`);
+export const getCobros = (anio, mes) => cuerpoConCopia(
+  `cobros|${anio}-${mes}`,
+  () => api.get('/cobros', { params: { anio, mes } }),
+);
+export const getDatosDeCobro = (userId, anio, mes) => cuerpoConCopia(
+  `cobro|${userId}|${anio}-${mes}`,
+  () => api.get(`/cobros/${userId}/${anio}/${mes}`),
+);
 export const marcarCobrado = (userId, anio, mes) => api.post(`/cobros/${userId}/${anio}/${mes}/cobro`);
 export const deshacerCobro = (userId, anio, mes) => api.delete(`/cobros/${userId}/${anio}/${mes}/cobro`);
 

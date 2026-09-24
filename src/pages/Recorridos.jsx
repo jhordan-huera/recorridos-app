@@ -1,14 +1,17 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import {
   Plus, RefreshCw, ChevronLeft, ChevronRight, Route as RouteIcon,
-  Clock, Bus, Pencil, Trash2, X,
+  Clock, Bus, Pencil, Trash2, X, CloudOff,
 } from 'lucide-react';
 import { useAlert } from '../context/AlertContext';
+import { usePendientes } from '../context/PendientesContext';
+import { useRecargaAlSincronizar } from '../hooks/useRecargaAlSincronizar';
 import {
-  deleteRecorrido, createRecorrido, updateRecorrido,
-  getAllRecorridos, getAllNinos, getAllVehiculos, mensajeDeError, fueBien, mensajeDeRespuesta,
+  deleteRecorrido, updateRecorrido,
+  getAllRecorridos, getAllNinos, getAllVehiculos, mensajeDeError, fueBien, mensajeDeRespuesta, esFalloDeRed,
 } from '../services/api';
+import { unirConPendientes, vistaDeRecorrido, pendientesDelMes } from '../lib/pendientes';
 import Modal from '../components/ui/Modal';
 import ConfirmModal from '../components/ui/ConfirmModal';
 import Button from '../components/ui/Button';
@@ -58,13 +61,21 @@ const formatearFecha = (fecha) => {
   return `${day} ${nombresMeses[parseInt(month, 10) - 1]?.slice(0, 3).toLowerCase()} ${year}`;
 };
 
+/** Del más reciente al más antiguo, también lo registrado sin conexión. */
+const masRecienteArriba = (a, b) => (String(a.fecha) === String(b.fecha)
+  ? String(b.hora_inicio ?? '').localeCompare(String(a.hora_inicio ?? ''))
+  : String(b.fecha).localeCompare(String(a.fecha)));
+
 const Recorridos = () => {
   const { showAlert } = useAlert();
+  const { pendientes, registrar, editar, descartar } = usePendientes();
   const reduceMotion = useReducedMotion();
 
   const [recorridos, setRecorridos] = useState([]);
   const [mostrarModal, setMostrarModal] = useState(false);
   const [editando, setEditando] = useState(false);
+  // El recorrido en edición aún no se ha enviado: se corrige en el teléfono.
+  const [editandoPendiente, setEditandoPendiente] = useState(false);
   const [recorridoId, setRecorridoId] = useState(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [recorridoAEliminar, setRecorridoAEliminar] = useState(null);
@@ -78,27 +89,29 @@ const Recorridos = () => {
   const [mesSeleccionado, setMesSeleccionado] = useState(new Date().getMonth() + 1);
   const [anioSeleccionado, setAnioSeleccionado] = useState(new Date().getFullYear());
   const [loading, setLoading] = useState(false);
+  // Sin conexión y sin copia guardada: no se sabe qué hay.
+  const [sinDatos, setSinDatos] = useState(false);
 
   const [formData, setFormData] = useState({
     fecha: '', hora_inicio: '', vehiculo_id: '', tipo_recorrido: 'traer', notas: '',
   });
 
-  useEffect(() => {
-    loadRecorridos();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const loadRecorridos = async () => {
-    setLoading(true);
+  const loadRecorridos = useCallback(async ({ silencioso = false } = {}) => {
+    if (!silencioso) setLoading(true);
     try {
       // Todas las páginas: el listado está limitado a 50 por petición.
       setRecorridos(await getAllRecorridos());
+      setSinDatos(false);
     } catch (error) {
-      showAlert('error', 'No se pudieron cargar los recorridos: ' + mensajeDeError(error));
+      if (error?.sinCopia) setSinDatos(true);
+      else showAlert('error', 'No se pudieron cargar los recorridos: ' + mensajeDeError(error));
     } finally {
-      setLoading(false);
+      if (!silencioso) setLoading(false);
     }
-  };
+  }, [showAlert]);
+
+  useEffect(() => { loadRecorridos(); }, [loadRecorridos]);
+  useRecargaAlSincronizar(['recorrido'], () => loadRecorridos({ silencioso: true }));
 
   const loadCatalogos = async () => {
     try {
@@ -106,15 +119,23 @@ const Recorridos = () => {
       setNinos(ninosData);
       setVehiculos(vehiculosData);
     } catch (error) {
-      showAlert('error', 'No se pudieron cargar los catálogos: ' + mensajeDeError(error));
+      showAlert('error', error?.sinCopia
+        ? 'Sin conexión: este teléfono no tiene guardada la lista de vehículos y estudiantes. Ábrela una vez con internet para poder registrar sin conexión.'
+        : 'No se pudieron cargar los catálogos: ' + mensajeDeError(error), 7000);
     }
   };
 
-  const recorridosFiltrados = useMemo(() => recorridos.filter((recorrido) => {
-    if (!recorrido.fecha) return false;
-    const [year, month] = recorrido.fecha.split('T')[0].split('-');
-    return parseInt(month, 10) === mesSeleccionado && parseInt(year, 10) === anioSeleccionado;
-  }), [recorridos, mesSeleccionado, anioSeleccionado]);
+  const claveMes = `${anioSeleccionado}-${String(mesSeleccionado).padStart(2, '0')}`;
+  const porEnviarDelMes = pendientesDelMes(pendientes, claveMes, 'recorrido').length;
+
+  // Lo registrado sin conexión aparece junto a lo del servidor, marcado.
+  const recorridosFiltrados = useMemo(() => unirConPendientes(recorridos, pendientes, 'recorrido')
+    .filter((recorrido) => {
+      if (!recorrido.fecha) return false;
+      const [year, month] = recorrido.fecha.split('T')[0].split('-');
+      return parseInt(month, 10) === mesSeleccionado && parseInt(year, 10) === anioSeleccionado;
+    })
+    .sort(masRecienteArriba), [recorridos, pendientes, mesSeleccionado, anioSeleccionado]);
 
   const estadisticas = useMemo(() => ({
     totalMes: recorridosFiltrados.reduce((total, r) => total + (parseFloat(r.costo) || 0), 0),
@@ -142,6 +163,7 @@ const Recorridos = () => {
     });
     setNinosSeleccionados([]);
     setEditando(false);
+    setEditandoPendiente(false);
     setRecorridoId(null);
   };
 
@@ -164,6 +186,7 @@ const Recorridos = () => {
     await loadCatalogos();
 
     setEditando(true);
+    setEditandoPendiente(Boolean(recorrido._pendiente));
     setRecorridoId(recorrido.id);
     setFormData({
       fecha: recorrido.fecha.split('T')[0],
@@ -207,29 +230,49 @@ const Recorridos = () => {
     }
 
     setSaving(true);
-    try {
-      // El <select> de vehículo envía cadena vacía cuando no hay selección; la
-      // API espera un UUID o null. Sin esta normalización, guardar un recorrido
-      // sin vehículo fallaba con "Debe ser un UUID válido".
-      const data = {
-        ...formData,
-        vehiculo_id: formData.vehiculo_id || null,
-        notas: formData.notas || null,
-        ninos: ninosSeleccionados,
-      };
-      const response = editando
-        ? await updateRecorrido(recorridoId, data)
-        : await createRecorrido(data);
+    // El <select> de vehículo envía cadena vacía cuando no hay selección; la
+    // API espera un UUID o null. Sin esta normalización, guardar un recorrido
+    // sin vehículo fallaba con "Debe ser un UUID válido".
+    const data = {
+      ...formData,
+      vehiculo_id: formData.vehiculo_id || null,
+      notas: formData.notas || null,
+      ninos: ninosSeleccionados.map(({ nino_id: ninoId, notas }) => ({ nino_id: ninoId, notas })),
+    };
+    // Para enseñarlo mientras no llegue: vehículo, costo y nombres.
+    const vista = vistaDeRecorrido(data, vehiculos, ninosSeleccionados);
+    const listo = (tipo, mensaje) => {
+      showAlert(tipo, mensaje, tipo === 'success' ? 4000 : 6000);
+      handleCloseModal();
+      loadRecorridos({ silencioso: true });
+    };
 
-      if (fueBien(response)) {
-        showAlert('success', editando ? 'Recorrido actualizado' : 'Recorrido registrado');
-        handleCloseModal();
-        loadRecorridos();
+    try {
+      if (editandoPendiente) {
+        await editar(recorridoId, { datos: data, vista });
+        listo('success', 'Cambios guardados. El recorrido se enviará cuando haya conexión.');
+        return;
+      }
+
+      if (editando) {
+        const response = await updateRecorrido(recorridoId, data);
+        if (fueBien(response)) listo('success', 'Recorrido actualizado');
+        else showAlert('error', mensajeDeRespuesta(response));
+        return;
+      }
+
+      const { respuesta, guardadoSinConexion } = await registrar({ tipo: 'recorrido', datos: data, vista });
+      if (guardadoSinConexion) {
+        listo('info', 'Sin conexión: el recorrido se guardó en este teléfono y se enviará solo cuando vuelva la conexión.');
+      } else if (fueBien(respuesta)) {
+        listo('success', 'Recorrido registrado');
       } else {
-        showAlert('error', mensajeDeRespuesta(response));
+        showAlert('error', mensajeDeRespuesta(respuesta));
       }
     } catch (error) {
-      showAlert('error', 'No se pudo guardar: ' + mensajeDeError(error));
+      showAlert('error', editando && !editandoPendiente && esFalloDeRed(error)
+        ? 'Sin conexión: para cambiar un recorrido que ya está en el servidor hace falta internet. Los nuevos sí se pueden registrar sin conexión.'
+        : 'No se pudo guardar: ' + mensajeDeError(error), 7000);
     } finally {
       setSaving(false);
     }
@@ -239,7 +282,13 @@ const Recorridos = () => {
     if (!recorridoAEliminar) return;
     setSaving(true);
     try {
-      const response = await deleteRecorrido(recorridoAEliminar);
+      // Uno que aún no se ha enviado solo existe en este teléfono: se descarta.
+      if (recorridoAEliminar._pendiente) {
+        await descartar(recorridoAEliminar.id);
+        showAlert('success', 'Recorrido descartado');
+        return;
+      }
+      const response = await deleteRecorrido(recorridoAEliminar.id);
       if (fueBien(response)) {
         showAlert('success', 'Recorrido eliminado');
         loadRecorridos();
@@ -247,7 +296,9 @@ const Recorridos = () => {
         showAlert('error', mensajeDeRespuesta(response));
       }
     } catch (error) {
-      showAlert('error', 'No se pudo eliminar: ' + mensajeDeError(error));
+      showAlert('error', esFalloDeRed(error)
+        ? 'Sin conexión: para borrar un recorrido que ya está en el servidor hace falta internet.'
+        : 'No se pudo eliminar: ' + mensajeDeError(error));
     } finally {
       setSaving(false);
       setShowDeleteModal(false);
@@ -315,21 +366,32 @@ const Recorridos = () => {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 lg:col-span-9">
           <StatCard
             label="Gasto del mes"
-            value={`$${estadisticas.totalMes.toFixed(2)}`}
+            value={sinDatos ? '—' : `$${estadisticas.totalMes.toFixed(2)}`}
             tone="positive"
-            footnote={`Acumulado en ${nombresMeses[mesSeleccionado - 1].toLowerCase()}`}
+            footnote={porEnviarDelMes > 0
+              ? `Incluye ${porEnviarDelMes} por enviar`
+              : `Acumulado en ${nombresMeses[mesSeleccionado - 1].toLowerCase()}`}
           />
-          <StatCard label="Trayectos" value={estadisticas.totalRecorridos} tone="brand" />
-          <StatCard label="Vehículos usados" value={estadisticas.vehiculosUsados} tone="caution" />
+          <StatCard label="Trayectos" value={sinDatos ? '—' : estadisticas.totalRecorridos} tone="brand" />
+          <StatCard label="Vehículos usados" value={sinDatos ? '—' : estadisticas.vehiculosUsados} tone="caution" />
         </div>
       </div>
+
+      {sinDatos && !loading && (
+        <EmptyState
+          icon={CloudOff}
+          title="Sin conexión"
+          message={`Los recorridos no se habían abierto con internet en este teléfono, así que no hay datos guardados que mostrar.${recorridosFiltrados.length ? ' Abajo solo ves lo registrado sin conexión.' : ''}`}
+          className="mb-6"
+        />
+      )}
 
       {/* Listado */}
       {loading ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {[...Array(8)].map((_, index) => <CardSkeleton key={index} lineas={4} />)}
         </div>
-      ) : recorridosFiltrados.length === 0 ? (
+      ) : sinDatos && recorridosFiltrados.length === 0 ? null : recorridosFiltrados.length === 0 ? (
         <EmptyState
           icon={RouteIcon}
           title="Sin recorridos este mes"
@@ -361,9 +423,19 @@ const Recorridos = () => {
                           {formatearFecha(recorrido.fecha)}
                         </p>
                       </div>
-                      <Badge tone={tipoTone[recorrido.tipo_recorrido] || 'neutral'}>
-                        {tipoLabel[recorrido.tipo_recorrido] || recorrido.tipo_recorrido}
-                      </Badge>
+                      <div className="flex shrink-0 flex-col items-end gap-1">
+                        <Badge tone={tipoTone[recorrido.tipo_recorrido] || 'neutral'}>
+                          {tipoLabel[recorrido.tipo_recorrido] || recorrido.tipo_recorrido}
+                        </Badge>
+                        {recorrido._pendiente && (
+                          <Badge
+                            tone={recorrido._pendiente === 'rechazado' ? 'critical' : 'caution'}
+                            title={recorrido._error || undefined}
+                          >
+                            {recorrido._pendiente === 'rechazado' ? 'No se pudo enviar' : 'Por enviar'}
+                          </Badge>
+                        )}
+                      </div>
                     </div>
 
                     <dl className="space-y-3">
@@ -437,7 +509,7 @@ const Recorridos = () => {
                       variant="ghost" size="sm"
                       aria-label="Eliminar recorrido"
                       className="px-2.5 text-label-secondary hover:bg-critical/14 hover:text-critical"
-                      onClick={() => { setRecorridoAEliminar(recorrido.id); setShowDeleteModal(true); }}
+                      onClick={() => { setRecorridoAEliminar(recorrido); setShowDeleteModal(true); }}
                     >
                       <Trash2 size={16} strokeWidth={2} />
                     </Button>
@@ -572,9 +644,11 @@ const Recorridos = () => {
         onClose={() => setShowDeleteModal(false)}
         onConfirm={confirmDelete}
         loading={saving}
-        title="Eliminar recorrido"
-        message="Esta ruta se borrará de forma permanente. No se puede deshacer."
-        confirmText="Eliminar"
+        title={recorridoAEliminar?._pendiente ? 'Descartar recorrido' : 'Eliminar recorrido'}
+        message={recorridoAEliminar?._pendiente
+          ? 'Este recorrido aún no se ha enviado y solo está en este teléfono. Si lo descartas, se pierde.'
+          : 'Esta ruta se borrará de forma permanente. No se puede deshacer.'}
+        confirmText={recorridoAEliminar?._pendiente ? 'Descartar' : 'Eliminar'}
         type="danger"
       />
     </div>

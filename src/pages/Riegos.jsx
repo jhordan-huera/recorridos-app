@@ -2,16 +2,22 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import {
   Plus, Droplets, Pencil, Trash2, FileDown, ChevronLeft, ChevronRight,
-  DollarSign, CalendarDays, Lock,
+  DollarSign, CalendarDays, Lock, CloudOff,
 } from 'lucide-react';
 import { useAlert } from '../context/AlertContext';
 import { useAuth } from '../context/AuthContext';
-import { getAllRiegos, deleteRiego, getCierres, mensajeDeError, fueBien, mensajeDeRespuesta } from '../services/api';
+import { usePendientes } from '../context/PendientesContext';
+import { useRecargaAlSincronizar } from '../hooks/useRecargaAlSincronizar';
+import {
+  getAllRiegos, deleteRiego, getCierres, mensajeDeError, fueBien, mensajeDeRespuesta, esFalloDeRed,
+} from '../services/api';
+import { unirConPendientes, pendientesDelMes } from '../lib/pendientes';
 import { generarReporteRiegosPdf } from '../lib/reporteRiegosPdf.js';
 import ConfirmModal from '../components/ui/ConfirmModal';
 import RiegoModal from '../components/RiegoModal';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
+import Badge from '../components/ui/Badge';
 import CardSkeleton from '../components/ui/CardSkeleton';
 import PageHeader from '../components/ui/PageHeader';
 import StatCard from '../components/ui/StatCard';
@@ -32,6 +38,7 @@ const etiquetaFecha = (fecha) => {
 const Riegos = () => {
   const { showAlert } = useAlert();
   const { user } = useAuth();
+  const { pendientes, descartar } = usePendientes();
   const reduceMotion = useReducedMotion();
 
   const ahora = new Date();
@@ -45,6 +52,9 @@ const Riegos = () => {
   const [aEliminar, setAEliminar] = useState(null);
   const [loading, setLoading] = useState(false);
   const [borrando, setBorrando] = useState(false);
+  // Sin conexión y sin copia guardada de este mes: no se sabe qué hay, y
+  // enseñar "0 riegos" haría creer que no hay ninguno.
+  const [sinDatos, setSinDatos] = useState(false);
 
   // Si el mes a la vista está terminado, no se ofrece editar ni borrar: el
   // servidor lo rechazaría. Se consulta aparte y sin bloquear la pantalla.
@@ -55,27 +65,41 @@ const Riegos = () => {
   const mesCerrado = cierres.some((c) => c.anio === anio && c.mes === mes
     && (c.estado === 'terminado' || c.estado === 'cobrado'));
 
-  const cargar = useCallback(async () => {
-    setLoading(true);
+  const cargar = useCallback(async ({ silencioso = false } = {}) => {
+    if (!silencioso) setLoading(true);
     try {
       setRiegos(await getAllRiegos(rangoDelMes(mes, anio)));
+      setSinDatos(false);
     } catch (error) {
-      showAlert('error', 'No se pudieron cargar los riegos: ' + mensajeDeError(error));
+      if (error?.sinCopia) {
+        setRiegos([]);
+        setSinDatos(true);
+      } else {
+        showAlert('error', 'No se pudieron cargar los riegos: ' + mensajeDeError(error));
+      }
     } finally {
-      setLoading(false);
+      if (!silencioso) setLoading(false);
     }
   }, [mes, anio, showAlert]);
 
   useEffect(() => { cargar(); }, [cargar]);
+  // Al llegar lo guardado sin conexión, o al volver la red, se trae lo del
+  // servidor sin volver a enseñar el esqueleto de carga.
+  useRecargaAlSincronizar(['riego'], () => cargar({ silencioso: true }));
+
+  const claveMes = `${anio}-${dosDigitos(mes)}`;
+  const porEnviarDelMes = pendientesDelMes(pendientes, claveMes, 'riego').length;
 
   // Del más reciente al más antiguo, como Recorridos y la Actividad del
   // Resumen: lo último que se registró es lo que se viene a comprobar. El PDF
   // no depende de este orden; ordena por su cuenta, cronológicamente.
+  // Lo registrado sin conexión aparece junto a lo del servidor, marcado.
   const ordenados = useMemo(
-    () => [...riegos].sort((a, b) => (a.fecha === b.fecha
-      ? String(b.hora).localeCompare(String(a.hora))
-      : String(b.fecha).localeCompare(String(a.fecha)))),
-    [riegos]
+    () => [...unirConPendientes(riegos, pendientes, 'riego', { mes: claveMes })]
+      .sort((a, b) => (a.fecha === b.fecha
+        ? String(b.hora).localeCompare(String(a.hora))
+        : String(b.fecha).localeCompare(String(a.fecha)))),
+    [riegos, pendientes, claveMes]
   );
 
   const total = useMemo(
@@ -108,11 +132,19 @@ const Riegos = () => {
     if (!aEliminar) return;
     setBorrando(true);
     try {
-      const respuesta = await deleteRiego(aEliminar);
+      // Uno que aún no se ha enviado solo existe en este teléfono: se descarta.
+      if (aEliminar._pendiente) {
+        await descartar(aEliminar.id);
+        showAlert('success', 'Riego descartado');
+        return;
+      }
+      const respuesta = await deleteRiego(aEliminar.id);
       if (fueBien(respuesta)) { showAlert('success', 'Riego eliminado'); cargar(); }
       else showAlert('error', mensajeDeRespuesta(respuesta));
     } catch (error) {
-      showAlert('error', 'No se pudo eliminar: ' + mensajeDeError(error));
+      showAlert('error', esFalloDeRed(error)
+        ? 'Sin conexión: para borrar un riego que ya está en el servidor hace falta internet.'
+        : 'No se pudo eliminar: ' + mensajeDeError(error));
     } finally {
       setBorrando(false);
       setShowDeleteModal(false);
@@ -121,6 +153,16 @@ const Riegos = () => {
   };
 
   const descargarPdf = async () => {
+    // Un PDF sin lo que falta por enviar sería un estado de cuenta incompleto
+    // que parece completo.
+    if (porEnviarDelMes > 0) {
+      showAlert('warning', `Hay ${porEnviarDelMes === 1 ? '1 riego' : `${porEnviarDelMes} riegos`} de ${MESES[mes - 1].toLowerCase()} sin enviar. El PDF saldrá completo cuando lleguen al servidor.`, 6000);
+      return;
+    }
+    if (sinDatos) {
+      showAlert('warning', 'Sin conexión y sin datos guardados de este mes: no se puede armar el PDF.');
+      return;
+    }
     if (ordenados.length === 0) {
       showAlert('warning', 'No hay riegos en este mes para exportar');
       return;
@@ -176,15 +218,18 @@ const Riegos = () => {
 
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
         <StatCard
-          label="Riegos del mes" value={loading ? '—' : ordenados.length}
+          label="Riegos del mes" value={loading || sinDatos ? '—' : ordenados.length}
           icon={Droplets} tone="info"
-          footnote={loading
+          footnote={loading || sinDatos
             ? `${MESES[mes - 1]} ${anio}`
             : `${diasRegados} ${diasRegados === 1 ? 'día' : 'días'} con riego`}
         />
         <StatCard
-          label="Total del mes" value={loading ? '—' : dinero.format(total)}
-          icon={DollarSign} tone="positive" footnote="Suma de los riegos registrados"
+          label="Total del mes" value={loading || sinDatos ? '—' : dinero.format(total)}
+          icon={DollarSign} tone="positive"
+          footnote={porEnviarDelMes > 0
+            ? `Incluye ${porEnviarDelMes} por enviar`
+            : 'Suma de los riegos registrados'}
         />
       </div>
 
@@ -227,11 +272,20 @@ const Riegos = () => {
         </div>
       </Card>
 
+      {sinDatos && !loading && (
+        <EmptyState
+          icon={CloudOff}
+          title="Sin conexión"
+          message={`${MESES[mes - 1]} de ${anio} no se había abierto con internet en este teléfono, así que no hay datos guardados que mostrar.${ordenados.length ? ' Abajo solo ves lo registrado sin conexión.' : ''}`}
+          className="mb-6"
+        />
+      )}
+
       {loading ? (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {[...Array(6)].map((_, i) => <CardSkeleton key={i} lineas={2} />)}
         </div>
-      ) : ordenados.length === 0 ? (
+      ) : sinDatos && ordenados.length === 0 ? null : ordenados.length === 0 ? (
         <EmptyState
           icon={Droplets}
           title="Sin riegos este mes"
@@ -266,6 +320,15 @@ const Riegos = () => {
                       <p className="tabular text-footnote text-label-secondary">
                         {String(riego.hora).slice(0, 5)}
                       </p>
+                      {riego._pendiente && (
+                        <Badge
+                          tone={riego._pendiente === 'rechazado' ? 'critical' : 'caution'}
+                          className="mt-1 !py-0.5"
+                          title={riego._error || undefined}
+                        >
+                          {riego._pendiente === 'rechazado' ? 'No se pudo enviar' : 'Por enviar'}
+                        </Badge>
+                      )}
                     </div>
                   </div>
 
@@ -273,7 +336,7 @@ const Riegos = () => {
                     <span className="tabular mr-1 text-headline font-semibold text-label">
                       {dinero.format(parseFloat(riego.costo) || 0)}
                     </span>
-                    {mesCerrado ? (
+                    {mesCerrado && !riego._pendiente ? (
                       <Lock size={14} strokeWidth={2} className="mx-2 text-label-tertiary" aria-label="Mes terminado" />
                     ) : (
                       <>
@@ -286,7 +349,7 @@ const Riegos = () => {
                         </button>
                         <button
                           type="button"
-                          onClick={() => { setAEliminar(riego.id); setShowDeleteModal(true); }}
+                          onClick={() => { setAEliminar(riego); setShowDeleteModal(true); }}
                           aria-label={`Eliminar riego del ${etiquetaFecha(riego.fecha)}`}
                           className="rounded-field p-2 text-label-secondary hover:bg-critical/12 hover:text-critical"
                         >
@@ -313,9 +376,11 @@ const Riegos = () => {
         isOpen={showDeleteModal}
         onClose={() => { setShowDeleteModal(false); setAEliminar(null); }}
         onConfirm={confirmarBorrado}
-        title="Eliminar riego"
-        message="El registro dejará de aparecer en los listados y en el PDF. ¿Continuar?"
-        confirmText="Eliminar"
+        title={aEliminar?._pendiente ? 'Descartar riego' : 'Eliminar riego'}
+        message={aEliminar?._pendiente
+          ? 'Este riego aún no se ha enviado y solo está en este teléfono. Si lo descartas, se pierde. ¿Continuar?'
+          : 'El registro dejará de aparecer en los listados y en el PDF. ¿Continuar?'}
+        confirmText={aEliminar?._pendiente ? 'Descartar' : 'Eliminar'}
         loading={borrando}
       />
     </div>

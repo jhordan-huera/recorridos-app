@@ -1,9 +1,9 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { useReducedMotion } from 'motion/react';
 import {
   Users, Route as RouteIcon, Calendar as CalendarIcon,
   ChevronRight, Clock, Trash2, Plus, Droplets, FileDown,
-  TrendingUp, HandCoins, Wallet, CalendarCheck, PieChart, BarChart3,
+  TrendingUp, HandCoins, Wallet, CalendarCheck, PieChart, BarChart3, CloudOff,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAlert } from '../context/AlertContext';
@@ -14,11 +14,14 @@ import { generarReporteGeneralPdf } from '../lib/reporteGeneralPdf.js';
 import { generarLiquidacionPdf } from '../lib/liquidacionPdf.js';
 import { useApp } from '../context/AppContext';
 import {
-  createRecorrido, updateRecorrido, deleteRecorrido,
+  updateRecorrido, deleteRecorrido,
   getAllRecorridos, getAllNinos, getAllVehiculos, getAllRiegos,
   getCierres, terminarMes, reabrirMes,
-  mensajeDeError, fueBien, mensajeDeRespuesta,
+  mensajeDeError, fueBien, mensajeDeRespuesta, esFalloDeRed,
 } from '../services/api';
+import { usePendientes } from '../context/PendientesContext';
+import { useRecargaAlSincronizar } from '../hooks/useRecargaAlSincronizar';
+import { unirConPendientes, vistaDeRecorrido, pendientesDelMes } from '../lib/pendientes';
 import Modal from '../components/ui/Modal';
 import ConfirmModal from '../components/ui/ConfirmModal';
 import Button from '../components/ui/Button';
@@ -221,9 +224,21 @@ const EsqueletoActividad = () => (
   </Card>
 );
 
+/** Etiqueta de un registro guardado en el teléfono que aún no llegó al servidor. */
+const MarcaPendiente = ({ registro }) => (
+  <Badge
+    tone={registro._pendiente === 'rechazado' ? 'critical' : 'caution'}
+    className="!px-2 !py-0.5"
+    title={registro._error || undefined}
+  >
+    {registro._pendiente === 'rechazado' ? 'No se pudo enviar' : 'Por enviar'}
+  </Badge>
+);
+
 const Dashboard = () => {
   const { showAlert } = useAlert();
   const { user, isAdmin, puedeRecorridos, puedeRiegos } = useAuth();
+  const { pendientes, registrar, descartar } = usePendientes();
   const { resolvedTheme } = useApp();
   const reduceMotion = useReducedMotion();
   const colors = PALETA_GRAFICO[resolvedTheme] || PALETA_GRAFICO.light;
@@ -255,6 +270,12 @@ const Dashboard = () => {
   const [ocupadoMes, setOcupadoMes] = useState(false);
   // Se incrementa tras registrar un riego para que el efecto vuelva a pedirlos.
   const [refrescoRiegos, setRefrescoRiegos] = useState(0);
+  // La próxima recarga de riegos no enseña el esqueleto (llega lo enviado).
+  const riegosSinEsqueleto = useRef(false);
+  // Sin conexión y sin copia guardada: no se sabe qué hay, así que no se
+  // calcula ninguna cifra (serían ceros que parecen reales).
+  const [sinDatosRecorridos, setSinDatosRecorridos] = useState(false);
+  const [sinDatosRiegos, setSinDatosRiegos] = useState(false);
 
   const [formData, setFormData] = useState({
     fecha: hoyISO(),
@@ -264,18 +285,26 @@ const Dashboard = () => {
     notas: '',
   });
 
-  const loadRecorridosData = async () => {
-    setLoading(true);
+  /** Qué hacer si no llegan los recorridos: sin copia se dice; otro error, se avisa. */
+  const falloDeRecorridos = (error) => {
+    setRecorridosTodos([]);
+    if (error?.sinCopia) setSinDatosRecorridos(true);
+    else showAlert('error', 'No se pudieron cargar los recorridos: ' + mensajeDeError(error));
+  };
+
+  const loadRecorridosData = async ({ silencioso = false } = {}) => {
+    if (!puedeRecorridos) return;
+    if (!silencioso) setLoading(true);
     try {
       // El dashboard agrega totales mensuales: necesita TODOS los recorridos.
       // El listado devuelve 50 por página, así que sin recorrerlas todas los
       // importes saldrían mal sin mostrar ningún error.
       setRecorridosTodos(await getAllRecorridos());
+      setSinDatosRecorridos(false);
     } catch (error) {
-      showAlert('error', 'No se pudieron cargar los recorridos: ' + mensajeDeError(error));
-      setRecorridosTodos([]);
+      if (!silencioso) falloDeRecorridos(error);
     } finally {
-      setLoading(false);
+      if (!silencioso) setLoading(false);
     }
   };
 
@@ -290,19 +319,21 @@ const Dashboard = () => {
         return;
       }
 
-      try {
-        const [recorridos, ninosData, vehiculosData] = await Promise.all([
-          getAllRecorridos(), getAllNinos(), getAllVehiculos(),
-        ]);
-        setRecorridosTodos(recorridos);
-        setNinos(ninosData);
-        setVehiculos(vehiculosData);
-      } catch (error) {
-        showAlert('error', 'No se pudieron cargar los datos: ' + mensajeDeError(error));
-        setRecorridosTodos([]);
-      } finally {
-        setLoading(false);
+      // Cada lista por su lado: sin conexión, una puede tener copia guardada y
+      // otra no, y la que sí la tiene se enseña igual.
+      const [recorridos, ninosData, vehiculosData] = await Promise.allSettled([
+        getAllRecorridos(), getAllNinos(), getAllVehiculos(),
+      ]);
+      if (recorridos.status === 'fulfilled') {
+        setRecorridosTodos(recorridos.value);
+        setSinDatosRecorridos(false);
+      } else {
+        falloDeRecorridos(recorridos.reason);
       }
+      // Los catálogos solo hacen falta para el formulario, que los vuelve a pedir al abrirse.
+      if (ninosData.status === 'fulfilled') setNinos(ninosData.value);
+      if (vehiculosData.status === 'fulfilled') setVehiculos(vehiculosData.value);
+      setLoading(false);
     };
 
     loadDashboardData();
@@ -320,6 +351,9 @@ const Dashboard = () => {
   useEffect(() => {
     let cancelado = false;
 
+    const silencioso = riegosSinEsqueleto.current;
+    riegosSinEsqueleto.current = false;
+
     const cargarRiegos = async () => {
       if (!puedeRiegos) {
         setRiegosRango([]);
@@ -327,14 +361,18 @@ const Dashboard = () => {
         return;
       }
 
-      setLoadingRiegos(true);
+      if (!silencioso) setLoadingRiegos(true);
       try {
         const datos = await getAllRiegos(rangoDelHistorial(mesActual, anioActual));
-        if (!cancelado) setRiegosRango(Array.isArray(datos) ? datos : []);
+        if (!cancelado) {
+          setRiegosRango(Array.isArray(datos) ? datos : []);
+          setSinDatosRiegos(false);
+        }
       } catch (error) {
-        if (cancelado) return;
+        if (cancelado || silencioso) return;
         setRiegosRango([]);
-        showAlert('error', 'No se pudieron cargar los riegos: ' + mensajeDeError(error));
+        if (error?.sinCopia) setSinDatosRiegos(true);
+        else showAlert('error', 'No se pudieron cargar los riegos: ' + mensajeDeError(error));
       } finally {
         if (!cancelado) setLoadingRiegos(false);
       }
@@ -346,16 +384,37 @@ const Dashboard = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mesActual, anioActual, refrescoRiegos, puedeRiegos]);
 
+  // Al llegar lo guardado sin conexión, o al volver la red, se trae lo del
+  // servidor sin volver a enseñar los esqueletos de carga.
+  useRecargaAlSincronizar(['recorrido', 'riego'], () => {
+    loadRecorridosData({ silencioso: true });
+    riegosSinEsqueleto.current = true;
+    setRefrescoRiegos((n) => n + 1);
+  });
+
   const claveDelMes = `${anioActual}-${dosDigitos(mesActual)}`;
 
+  // Lo registrado sin conexión cuenta y se ve como lo demás, marcado como
+  // pendiente. Todo lo que sigue se calcula sobre estas dos listas.
+  const recorridosConPendientes = useMemo(
+    () => (puedeRecorridos ? unirConPendientes(recorridosTodos, pendientes, 'recorrido') : []),
+    [recorridosTodos, pendientes, puedeRecorridos]
+  );
+  const riegosConPendientes = useMemo(
+    () => (puedeRiegos ? unirConPendientes(riegosRango, pendientes, 'riego') : []),
+    [riegosRango, pendientes, puedeRiegos]
+  );
+  const porEnviarDelMes = pendientesDelMes(pendientes, claveDelMes).length;
+  const sinCifras = (puedeRecorridos && sinDatosRecorridos) || (puedeRiegos && sinDatosRiegos);
+
   const recorridosMensuales = useMemo(
-    () => agruparPorDia(recorridosTodos, claveDelMes, 'hora_inicio'),
-    [recorridosTodos, claveDelMes]
+    () => agruparPorDia(recorridosConPendientes, claveDelMes, 'hora_inicio'),
+    [recorridosConPendientes, claveDelMes]
   );
 
   const riegosMensuales = useMemo(
-    () => agruparPorDia(riegosRango, claveDelMes, 'hora'),
-    [riegosRango, claveDelMes]
+    () => agruparPorDia(riegosConPendientes, claveDelMes, 'hora'),
+    [riegosConPendientes, claveDelMes]
   );
 
   const { diasConRecorridos, totalRecorridosMes, costoRecorridos } = useMemo(() => {
@@ -391,8 +450,8 @@ const Dashboard = () => {
       const anio = fecha.getFullYear();
       const clave = `${anio}-${dosDigitos(mes)}`;
 
-      const recorridos = puedeRecorridos ? sumarDelMes(recorridosTodos, clave) : 0;
-      const riegos = puedeRiegos ? sumarDelMes(riegosRango, clave) : 0;
+      const recorridos = puedeRecorridos ? sumarDelMes(recorridosConPendientes, clave) : 0;
+      const riegos = puedeRiegos ? sumarDelMes(riegosConPendientes, clave) : 0;
 
       filas.push({
         clave,
@@ -407,7 +466,7 @@ const Dashboard = () => {
     }
 
     return filas;
-  }, [recorridosTodos, riegosRango, mesActual, anioActual, puedeRecorridos, puedeRiegos]);
+  }, [recorridosConPendientes, riegosConPendientes, mesActual, anioActual, puedeRecorridos, puedeRiegos]);
 
   const gastoTotalMes = costoRecorridos + costoRiegos;
   const gastoMesAnterior = resumenMeses.at(-2)?.total ?? 0;
@@ -538,7 +597,9 @@ const Dashboard = () => {
     try {
       await refreshCatalogs();
     } catch (error) {
-      showAlert('error', 'No se pudieron cargar los catálogos: ' + mensajeDeError(error));
+      showAlert('error', error?.sinCopia
+        ? 'Sin conexión: este teléfono no tiene guardada la lista de vehículos y estudiantes. Ábrela una vez con internet para poder registrar sin conexión.'
+        : 'No se pudieron cargar los catálogos: ' + mensajeDeError(error), 7000);
     } finally {
       setLoadingForm(false);
     }
@@ -547,7 +608,7 @@ const Dashboard = () => {
   const handleCloseModal = (shouldReload = false) => {
     setIsModalOpen(false);
     resetForm();
-    if (shouldReload) loadRecorridosData();
+    if (shouldReload) loadRecorridosData({ silencioso: true });
   };
 
   const handleChange = (event) => setFormData({ ...formData, [event.target.name]: event.target.value });
@@ -577,20 +638,42 @@ const Dashboard = () => {
     }
 
     setSaving(true);
+    const data = {
+      ...formData,
+      notas: formData.notas || null,
+      ninos: ninosSeleccionados.map(({ nino_id: ninoId, notas }) => ({ nino_id: ninoId, notas })),
+    };
     try {
-      const data = { ...formData, notas: formData.notas || null, ninos: ninosSeleccionados };
-      const response = editando
-        ? await updateRecorrido(recorridoId, data)
-        : await createRecorrido(data);
+      if (editando) {
+        const response = await updateRecorrido(recorridoId, data);
+        if (fueBien(response)) {
+          showAlert('success', 'Recorrido actualizado');
+          handleCloseModal(true);
+        } else {
+          showAlert('error', mensajeDeRespuesta(response));
+        }
+        return;
+      }
 
-      if (fueBien(response)) {
-        showAlert('success', editando ? 'Recorrido actualizado' : 'Recorrido registrado');
+      // Sin conexión se guarda en el teléfono y se envía después.
+      const { respuesta, guardadoSinConexion } = await registrar({
+        tipo: 'recorrido',
+        datos: data,
+        vista: vistaDeRecorrido(data, vehiculos, ninosSeleccionados),
+      });
+      if (guardadoSinConexion) {
+        showAlert('info', 'Sin conexión: el recorrido se guardó en este teléfono y se enviará solo cuando vuelva la conexión.', 6000);
+        handleCloseModal(true);
+      } else if (fueBien(respuesta)) {
+        showAlert('success', 'Recorrido registrado');
         handleCloseModal(true);
       } else {
-        showAlert('error', mensajeDeRespuesta(response));
+        showAlert('error', mensajeDeRespuesta(respuesta));
       }
     } catch (error) {
-      showAlert('error', 'No se pudo guardar: ' + mensajeDeError(error));
+      showAlert('error', editando && esFalloDeRed(error)
+        ? 'Sin conexión: para cambiar un recorrido que ya está en el servidor hace falta internet.'
+        : 'No se pudo guardar: ' + mensajeDeError(error));
     } finally {
       setSaving(false);
     }
@@ -599,19 +682,44 @@ const Dashboard = () => {
   const confirmDelete = async () => {
     if (!recorridoAEliminar) return;
     try {
-      const response = await deleteRecorrido(recorridoAEliminar);
+      // Uno que aún no se ha enviado solo existe en este teléfono: se descarta.
+      if (recorridoAEliminar._pendiente) {
+        await descartar(recorridoAEliminar.id);
+        showAlert('success', 'Recorrido descartado');
+        return;
+      }
+      const response = await deleteRecorrido(recorridoAEliminar.id);
       if (fueBien(response)) {
         showAlert('success', 'Recorrido eliminado');
-        loadRecorridosData();
+        loadRecorridosData({ silencioso: true });
       } else {
         showAlert('error', mensajeDeRespuesta(response));
       }
     } catch (error) {
-      showAlert('error', 'No se pudo eliminar: ' + mensajeDeError(error));
+      showAlert('error', esFalloDeRed(error)
+        ? 'Sin conexión: para borrar un recorrido que ya está en el servidor hace falta internet.'
+        : 'No se pudo eliminar: ' + mensajeDeError(error));
     } finally {
       setShowDeleteModal(false);
       setRecorridoAEliminar(null);
     }
+  };
+
+  /**
+   * ¿Se puede emitir el PDF del mes? No mientras falte algo por llegar al
+   * servidor o no haya datos: saldría un estado de cuenta incompleto que
+   * parece completo.
+   */
+  const pdfDisponible = () => {
+    if (porEnviarDelMes > 0) {
+      showAlert('warning', `Hay ${porEnviarDelMes === 1 ? '1 registro' : `${porEnviarDelMes} registros`} de ${nombresMeses[mesActual - 1].toLowerCase()} sin enviar. El PDF saldrá completo cuando lleguen al servidor.`, 6000);
+      return false;
+    }
+    if (sinCifras) {
+      showAlert('warning', 'Sin conexión y sin datos guardados de este mes: no se puede armar el PDF.');
+      return false;
+    }
+    return true;
   };
 
   /**
@@ -621,6 +729,7 @@ const Dashboard = () => {
    * tienen nada que ver con esta pantalla y la hacían aún más larga.
    */
   const exportarPDF = async () => {
+    if (!pdfDisponible()) return;
     try {
       // El módulo trabaja con una lista plana; aquí los recorridos están
       // agrupados por día para pintar el calendario.
@@ -653,6 +762,7 @@ const Dashboard = () => {
    * total, que es justo lo que el papel tiene que contestar.
    */
   const exportarGeneralPDF = async () => {
+    if (!pdfDisponible()) return;
     try {
       const losRecorridos = Object.values(recorridosMensuales).flat();
       const losRiegos = Object.values(riegosMensuales).flat();
@@ -678,6 +788,7 @@ const Dashboard = () => {
 
   /** Los riegos del mes en su propio PDF, con el mismo formato que su pantalla. */
   const exportarRiegosPDF = async () => {
+    if (!pdfDisponible()) return;
     try {
       const planos = Object.values(riegosMensuales).flat().sort((a, b) => (
         a.fecha === b.fecha
@@ -758,14 +869,14 @@ const Dashboard = () => {
   const { recorridosAnterior, riegosAnterior, diasAnterior } = useMemo(() => {
     const clave = mesAnterior?.clave;
     if (!clave) return { recorridosAnterior: 0, riegosAnterior: 0, diasAnterior: 0 };
-    const recorridos = puedeRecorridos ? recorridosTodos.filter((r) => claveDeMes(r?.fecha) === clave) : [];
-    const riegos = puedeRiegos ? riegosRango.filter((r) => claveDeMes(r?.fecha) === clave) : [];
+    const recorridos = puedeRecorridos ? recorridosConPendientes.filter((r) => claveDeMes(r?.fecha) === clave) : [];
+    const riegos = puedeRiegos ? riegosConPendientes.filter((r) => claveDeMes(r?.fecha) === clave) : [];
     return {
       recorridosAnterior: recorridos.length,
       riegosAnterior: riegos.length,
       diasAnterior: new Set([...recorridos, ...riegos].map((r) => diaDeFecha(r.fecha))).size,
     };
-  }, [recorridosTodos, riegosRango, mesAnterior?.clave, puedeRecorridos, puedeRiegos]);
+  }, [recorridosConPendientes, riegosConPendientes, mesAnterior?.clave, puedeRecorridos, puedeRiegos]);
 
   /*
    * Tres cifras siempre, como en un tablero. Si la cuenta no tiene uno de los
@@ -904,11 +1015,39 @@ const Dashboard = () => {
         esFuturo={esMesFuturo}
         esAdmin={isAdmin}
         ocupado={ocupadoMes}
-        onTerminar={() => setAccionMes('terminar')}
+        onTerminar={() => {
+          // Terminarlo con algo aún en el teléfono haría que ese registro
+          // rebotara al llegar: el mes ya no admitiría cambios.
+          if (porEnviarDelMes > 0) {
+            showAlert('warning', `Antes de terminar ${nombresMeses[mesActual - 1].toLowerCase()} tienen que llegar al servidor ${porEnviarDelMes === 1 ? 'el registro guardado' : `los ${porEnviarDelMes} registros guardados`} sin conexión.`, 6000);
+            return;
+          }
+          setAccionMes('terminar');
+        }}
         onReabrir={() => setAccionMes('reabrir')}
       />
 
+      {/* Sin conexión y sin copia: se dice, en vez de pintar ceros. */}
+      {sinCifras && !cargando && (
+        <Card className="mb-4 flex items-start gap-3">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-caution/14 text-caution">
+            <CloudOff size={19} strokeWidth={2} />
+          </span>
+          <div>
+            <h2 className="text-headline font-semibold text-label">Sin conexión y sin datos guardados</h2>
+            <p className="mt-1 text-subhead text-label-secondary">
+              {puedeRecorridos && sinDatosRecorridos && puedeRiegos && sinDatosRiegos
+                ? 'Los recorridos y los riegos'
+                : puedeRecorridos && sinDatosRecorridos ? 'Los recorridos' : 'Los riegos de estos meses'}
+              {' '}no se habían abierto con internet en este teléfono, así que las cifras no se pueden
+              calcular. {porEnviarDelMes > 0 ? 'Abajo ves lo registrado sin conexión. ' : ''}Vuelve cuando haya conexión.
+            </p>
+          </div>
+        </Card>
+      )}
+
       {/* ── Cifras ──────────────────────────────────────────────────────────── */}
+      {!sinCifras && (
       <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {cargando
           ? [0, 1, 2].map((i) => <EsqueletoKpi key={i} />)
@@ -918,8 +1057,10 @@ const Dashboard = () => {
             <Kpi key={clave} {...kpi} className={i === 0 ? 'sm:col-span-2 xl:col-span-1' : ''} />
           ))}
       </div>
+      )}
 
       {/* ── Gasto por mes y tipos de recorrido ──────────────────────────────── */}
+      {!sinCifras && (
       <div className="mb-4 grid grid-cols-1 gap-4 xl:grid-cols-12">
         <Card className={puedeRecorridos ? 'xl:col-span-7' : 'xl:col-span-12'}>
           <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
@@ -981,9 +1122,10 @@ const Dashboard = () => {
           </Card>
         )}
       </div>
+      )}
 
       {/* ── Avisos: dos frases que resumen el mes ───────────────────────────── */}
-      {!cargando && (
+      {!cargando && !sinCifras && (
         <div className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
           <Aviso
             icono={PieChart}
@@ -1051,7 +1193,7 @@ const Dashboard = () => {
       {/* ── Vehículos del mes ───────────────────────────────────────────────
           Qué dio cada carro y cuánto hay que entregarle a su dueño. Solo con
           recorridos, que es donde intervienen los autos. */}
-      {puedeRecorridos && !cargando && liquidacion.disponible && liquidacion.filas.length > 0 && (
+      {puedeRecorridos && !cargando && !sinCifras && liquidacion.disponible && liquidacion.filas.length > 0 && (
         <section id="liquidacion" aria-label="Vehículos del mes" className="mb-6 scroll-mt-24">
           {/* Con dos vehículos, dos columnas: una tercera vacía dejaría un
               hueco que parece que falta algo. */}
@@ -1229,7 +1371,10 @@ const Dashboard = () => {
                                   <Droplets size={15} strokeWidth={2} />
                                 </span>
                                 <div className="min-w-0">
-                                  <p className="text-subhead font-medium text-label">Riego</p>
+                                  <p className="flex flex-wrap items-center gap-x-2 text-subhead font-medium text-label">
+                                    Riego
+                                    {riego._pendiente && <MarcaPendiente registro={riego} />}
+                                  </p>
                                   <p className="tabular text-footnote text-label-tertiary">
                                     {formatearHora(riego.hora)}
                                   </p>
@@ -1252,9 +1397,12 @@ const Dashboard = () => {
                             className="rounded-control border border-separator/50 bg-surface-secondary p-3"
                           >
                             <div className="mb-2 flex items-center justify-between gap-2">
-                              <Badge tone={tipoTone[recorrido.tipo_recorrido] || 'neutral'}>
-                                {tipoLabel[recorrido.tipo_recorrido] || recorrido.tipo_recorrido}
-                              </Badge>
+                              <span className="flex flex-wrap items-center gap-1.5">
+                                <Badge tone={tipoTone[recorrido.tipo_recorrido] || 'neutral'}>
+                                  {tipoLabel[recorrido.tipo_recorrido] || recorrido.tipo_recorrido}
+                                </Badge>
+                                {recorrido._pendiente && <MarcaPendiente registro={recorrido} />}
+                              </span>
                               <span className="tabular flex items-center gap-1 text-footnote text-label-tertiary">
                                 <Clock size={12} strokeWidth={2.2} />
                                 {formatearHora(recorrido.hora_inicio)}
@@ -1271,12 +1419,13 @@ const Dashboard = () => {
                                 {totalPasajeros} {totalPasajeros === 1 ? 'pasajero' : 'pasajeros'}
                               </span>
                               {/* En un mes terminado no se ofrece borrar: el
-                                  servidor lo rechazaría. */}
-                              {!mesCerrado && (
+                                  servidor lo rechazaría. Lo que aún no se
+                                  envió sí se puede descartar. */}
+                              {(!mesCerrado || recorrido._pendiente) && (
                                 <button
                                   type="button"
-                                  onClick={() => { setRecorridoAEliminar(recorrido.id); setShowDeleteModal(true); }}
-                                  aria-label="Eliminar recorrido"
+                                  onClick={() => { setRecorridoAEliminar(recorrido); setShowDeleteModal(true); }}
+                                  aria-label={recorrido._pendiente ? 'Descartar recorrido sin enviar' : 'Eliminar recorrido'}
                                   className="tappable rounded-full p-1.5 text-label-tertiary transition-colors hover:bg-critical/12 hover:text-critical"
                                 >
                                   <Trash2 size={14} strokeWidth={2} />
@@ -1402,8 +1551,10 @@ const Dashboard = () => {
         onClose={() => setShowDeleteModal(false)}
         onConfirm={confirmDelete}
         title="Eliminar recorrido"
-        message="Este registro se borrará de forma permanente. No se puede deshacer."
-        confirmText="Eliminar"
+        message={recorridoAEliminar?._pendiente
+          ? 'Este recorrido aún no se ha enviado y solo está en este teléfono. Si lo descartas, se pierde.'
+          : 'Este registro se borrará de forma permanente. No se puede deshacer.'}
+        confirmText={recorridoAEliminar?._pendiente ? 'Descartar' : 'Eliminar'}
         type="danger"
       />
 
