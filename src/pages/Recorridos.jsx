@@ -28,8 +28,8 @@ const nombresMeses = [
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
 ];
 
-const tipoTone = { traer: 'brand', llevar: 'positive', ambos: 'accent' };
-const tipoLabel = { traer: 'Traer', llevar: 'Llevar', ambos: 'Ambos' };
+const tipoTone = { traer: 'brand', llevar: 'positive' };
+const tipoLabel = { traer: 'Traer', llevar: 'Llevar' };
 
 const obtenerFechaActual = () => {
   const ahora = new Date();
@@ -498,7 +498,6 @@ const Recorridos = () => {
               >
                 <option value="traer">Traer estudiantes</option>
                 <option value="llevar">Llevar estudiantes</option>
-                <option value="ambos">Ambos</option>
               </Select>
             </div>
 

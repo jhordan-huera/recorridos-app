@@ -50,10 +50,23 @@ if (localStorage.getItem('authToken') && !localStorage.getItem(CLAVES.access)) {
   limpiarSesion();
 }
 
+/*
+ * Tiempo máximo por petición. Sin él, una petición que se queda colgada —un
+ * arranque en frío del servidor con mala señal en el móvil— no terminaba
+ * nunca, y la pantalla de carga se quedaba ahí indefinidamente. 20 s cubren
+ * de sobra un arranque en frío normal (unos 3-6 s) y cortan lo que ya no va
+ * a llegar.
+ */
+export const TIEMPO_MAXIMO_MS = 20_000;
+
 const api = axios.create({
   baseURL: API_URL,
   headers: { 'Content-Type': 'application/json' },
+  timeout: TIEMPO_MAXIMO_MS,
 });
+
+/** true si la petición no llegó a tener respuesta: sin red o sin tiempo. */
+export const esFalloDeRed = (error) => Boolean(error) && !error.response;
 
 api.interceptors.request.use((config) => {
   const token = getAccessToken();
@@ -115,6 +128,7 @@ const renovarToken = async () => {
   // Cliente aparte: sin interceptores, para que un 401 aquí no reentre.
   const { data } = await axios.post(`${API_URL}/auth/refresh`, { refresh_token: refresh }, {
     headers: { 'Content-Type': 'application/json' },
+    timeout: TIEMPO_MAXIMO_MS,
   });
 
   guardarSesion({
@@ -327,6 +341,18 @@ export const getRiegoById = (id) => api.get(`/riegos/${id}`);
 export const createRiego = (data) => api.post('/riegos', data);
 export const updateRiego = (id, data) => api.put(`/riegos/${id}`, data);
 export const deleteRiego = (id) => api.delete(`/riegos/${id}`);
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Cierre de mes (cada usuario, los suyos) y cobros (solo administrador)
+ * ───────────────────────────────────────────────────────────────────────────── */
+export const getCierres = (anio) => api.get('/cierres', { params: anio ? { anio } : {} });
+export const terminarMes = (anio, mes) => api.post('/cierres', { anio, mes });
+export const reabrirMes = (anio, mes) => api.delete(`/cierres/${anio}/${mes}`);
+
+export const getCobros = (anio, mes) => api.get('/cobros', { params: { anio, mes } });
+export const getDatosDeCobro = (userId, anio, mes) => api.get(`/cobros/${userId}/${anio}/${mes}`);
+export const marcarCobrado = (userId, anio, mes) => api.post(`/cobros/${userId}/${anio}/${mes}/cobro`);
+export const deshacerCobro = (userId, anio, mes) => api.delete(`/cobros/${userId}/${anio}/${mes}/cobro`);
 
 /* ─────────────────────────────────────────────────────────────────────────────
  * Helpers de rol

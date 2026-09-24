@@ -24,6 +24,7 @@ import StatCard from '../components/ui/StatCard';
 import EmptyState from '../components/ui/EmptyState';
 import SearchField from '../components/ui/SearchField';
 import { crossFade, springSheet } from '../lib/motion';
+import PestanasAdmin from '../components/PestanasAdmin';
 
 const getInitials = (name) => {
   if (!name) return '??';
@@ -214,6 +215,7 @@ const Users = () => {
 
   return (
     <div className="pb-4">
+      <PestanasAdmin />
       <PageHeader
         title="Usuarios"
         subtitle="Accesos al sistema y permisos"
@@ -302,7 +304,7 @@ const Users = () => {
                         </Badge>
                       </div>
 
-                      <h3 className="truncate text-headline font-semibold text-label" title={user.nombre}>
+                      <h3 className="break-words text-headline font-semibold text-label">
                         {user.nombre}
                       </h3>
                       <p className="truncate text-footnote text-label-secondary" title={user.usuario}>

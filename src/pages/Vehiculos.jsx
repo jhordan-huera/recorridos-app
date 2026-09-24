@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { Plus, Bus, Zap, Pencil, Trash2, Car, Building2, FileText, CarTaxiFront } from 'lucide-react';
+import { Plus, Bus, Zap, Pencil, Trash2, Car, Building2, FileText, CarTaxiFront, HandCoins } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useAlert } from '../context/AlertContext';
 import {
@@ -11,6 +11,7 @@ import ConfirmModal from '../components/ui/ConfirmModal';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import Select from '../components/ui/Select';
+import Switch from '../components/ui/Switch';
 import Card from '../components/ui/Card';
 import Badge from '../components/ui/Badge';
 import Skeleton from '../components/ui/Skeleton';
@@ -23,6 +24,19 @@ import { crossFade, springSheet } from '../lib/motion';
 
 const emptyForm = {
   tipo: 'propio', descripcion: '', placa: '', capacidad: '', costo_por_recorrido: '',
+  auto_cobra: false, parte_auto: '',
+};
+
+const dinero = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
+
+/**
+ * Cómo se reparte lo que se cobra por un recorrido en este vehículo.
+ * Lo del chofer no se guarda: es lo que queda después de la parte del auto.
+ */
+const repartoDe = ({ costo_por_recorrido, auto_cobra, parte_auto }) => {
+  const tarifa = parseFloat(costo_por_recorrido) || 0;
+  const auto = auto_cobra ? parseFloat(parte_auto) || 0 : 0;
+  return { tarifa, auto, chofer: tarifa - auto };
 };
 
 // Iconografía clara en lugar de emoji: un glifo del sistema se lee igual en
@@ -89,6 +103,17 @@ const Vehiculos = () => {
       return;
     }
 
+    // Las mismas dos reglas que aplica el servidor, avisadas antes de enviar.
+    const { auto, chofer } = repartoDe(formData);
+    if (repartoDisponible && formData.auto_cobra && auto <= 0) {
+      showAlert('warning', 'Si el auto cobra, indica cuánto se lleva por recorrido');
+      return;
+    }
+    if (repartoDisponible && chofer < 0) {
+      showAlert('warning', 'El auto no puede llevarse más de lo que cuesta el recorrido');
+      return;
+    }
+
     setSaving(true);
     const data = {
       tipo: formData.tipo,
@@ -96,6 +121,10 @@ const Vehiculos = () => {
       placa: formData.placa || null,
       capacidad: formData.capacidad ? parseInt(formData.capacidad, 10) : null,
       costo_por_recorrido: formData.costo_por_recorrido ? parseFloat(formData.costo_por_recorrido) : 0,
+      ...(repartoDisponible && {
+        auto_cobra: formData.auto_cobra,
+        parte_auto: formData.auto_cobra ? auto : 0,
+      }),
     };
 
     try {
@@ -147,9 +176,24 @@ const Vehiculos = () => {
       placa: vehiculo.placa || '',
       capacidad: vehiculo.capacidad || '',
       costo_por_recorrido: vehiculo.costo_por_recorrido || '',
+      auto_cobra: vehiculo.auto_cobra === true,
+      parte_auto: vehiculo.auto_cobra ? vehiculo.parte_auto : '',
     });
     setMostrarModal(true);
   };
+
+  /*
+   * ¿La API conoce el reparto? Si este front se despliega antes que el
+   * backend, mandarle auto_cobra y parte_auto haría que rechazara con un 400
+   * cualquier alta o edición de vehículos. La señal es que los vehículos que
+   * devuelve traen el campo. Sin vehículos todavía no se puede saber, y se
+   * oculta: el primero se crea como "no cobra", que es lo que la API asigna
+   * por defecto de todos modos.
+   */
+  const repartoDisponible = useMemo(
+    () => (vehiculos || []).some((vehiculo) => 'auto_cobra' in vehiculo),
+    [vehiculos]
+  );
 
   const filteredVehiculos = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
@@ -265,6 +309,19 @@ const Vehiculos = () => {
                             ${parseFloat(vehiculo.costo_por_recorrido || 0).toFixed(2)}
                           </dd>
                         </div>
+                        {repartoDisponible && (
+                        <div className="col-span-2">
+                          <dt className="text-caption text-label-tertiary">Reparto por recorrido</dt>
+                          <dd className="tabular mt-0.5 text-subhead font-medium text-label">
+                            {(() => {
+                              const { auto, chofer } = repartoDe(vehiculo);
+                              return vehiculo.auto_cobra
+                                ? `Auto ${dinero.format(auto)} · Chofer ${dinero.format(chofer)}`
+                                : 'Todo para el chofer';
+                            })()}
+                          </dd>
+                        </div>
+                        )}
                       </dl>
                     </div>
 
@@ -352,6 +409,51 @@ const Vehiculos = () => {
               placeholder="0.00" required min="0" disabled={saving} hint="En dólares"
             />
           </div>
+
+          {/* Primero la pregunta —¿el auto cobra?— y solo si cobra, cuánto.
+              Así "no cobra" es una decisión y no un importe que se dejó en
+              cero, y el campo no estorba en los autos que no cobran. */}
+          {repartoDisponible && (
+          <div className="space-y-3">
+            <Switch
+              icon={HandCoins}
+              label="¿El auto cobra una parte?"
+              description="Lo que se lleva el dueño del auto por cada recorrido"
+              checked={formData.auto_cobra}
+              disabled={saving}
+              onChange={(valor) => setFormData({ ...formData, auto_cobra: valor })}
+            />
+
+            {formData.auto_cobra && (
+              <Input
+                label="Cuánto se lleva el auto" type="number" step="0.01" min="0.01"
+                name="parte_auto" value={formData.parte_auto} onChange={handleChange}
+                placeholder="1.50" required disabled={saving} autoFocus
+              />
+            )}
+
+            {/* El resultado se ve mientras se escribe: el reparto se entiende
+                mejor viéndolo que leyendo cómo se calcula. */}
+            {(() => {
+              const { tarifa, chofer } = repartoDe(formData);
+              if (tarifa <= 0) return null;
+              if (chofer < 0) {
+                return (
+                  <p className="px-0.5 text-footnote font-medium text-critical">
+                    El auto no puede llevarse más que el costo del recorrido ({dinero.format(tarifa)}).
+                  </p>
+                );
+              }
+              return (
+                <p className="tabular px-0.5 text-footnote text-label-secondary">
+                  {formData.auto_cobra ? 'Para el chofer: ' : 'Todo para el chofer: '}
+                  <span className="font-semibold text-label">{dinero.format(chofer)}</span>
+                  {' por recorrido'}
+                </p>
+              );
+            })()}
+          </div>
+          )}
         </form>
       </Modal>
     </div>

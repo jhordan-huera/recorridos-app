@@ -33,11 +33,19 @@ export const entradasDeMenu = ({
   const permitido = { recorridos: puedeRecorridos, riegos: puedeRiegos };
   const items = ENTRADAS.filter((entrada) => !entrada.modulo || permitido[entrada.modulo]);
 
-  if (isAdmin) items.push({ icon: ShieldCheck, path: '/users', label: 'Usuarios' });
+  // Una sola entrada para todo lo de administración (usuarios y cobros), con
+  // pestañas dentro. En el móvil el administrador ya tiene siete entradas
+  // abajo; una octava apretaría las etiquetas hasta cortarlas.
+  if (isAdmin) items.push({ icon: ShieldCheck, path: '/users', label: 'Admin', rutas: ['/users', '/cobros'] });
   if (incluirPerfil) items.push({ icon: CircleUser, path: '/perfil', label: 'Perfil' });
 
   return items;
 };
+
+/** Si una entrada del menú corresponde a la ruta actual. */
+export const estaActiva = (item, ruta) => (
+  item.rutas ? item.rutas.includes(ruta) : ruta === item.path || (item.path === '/dashboard' && ruta === '/')
+);
 
 /** A dónde mandar a alguien que entra o que pide una pantalla que no le toca. */
 export const rutaDeInicio = ({ puedeRecorridos, puedeRiegos }) => (

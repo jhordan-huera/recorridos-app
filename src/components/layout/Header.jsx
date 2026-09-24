@@ -5,7 +5,7 @@ import {
   LogOut, CircleUser, Route,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { entradasDeMenu } from '../../lib/navegacion';
+import { entradasDeMenu, estaActiva } from '../../lib/navegacion';
 import { useScrollEdge } from '../../hooks/useScrollEdge';
 import { crossFade, springSnappy, haptics } from '../../lib/motion';
 import ThemeToggle from '../ui/ThemeToggle';
@@ -94,8 +94,7 @@ const Header = () => {
         <nav aria-label="Secciones" className="mx-auto hidden lg:flex items-center gap-0.5 rounded-control bg-fill/10 p-0.5">
           {navItems.map((item) => {
             const Icon = item.icon;
-            const isActive = location.pathname === item.path
-              || (item.path === '/dashboard' && location.pathname === '/');
+            const isActive = estaActiva(item, location.pathname);
             return (
               <Link
                 key={item.path}

@@ -10,6 +10,8 @@ import {
   getAccessToken,
   registrarCierreDeSesion,
   mensajeDeError,
+  esFalloDeRed,
+  getCurrentUserInfo,
 } from '../services/api';
 
 const AuthContext = createContext();
@@ -53,9 +55,20 @@ export const AuthProvider = ({ children }) => {
         const { data } = await getCurrentUser();
         setUser(data.data);
         guardarSesion({ usuario: data.data });
-      } catch {
-        // El interceptor ya intentó renovar. Si llegamos aquí, no hay sesión.
-        cerrarSesionLocal();
+      } catch (err) {
+        // Sin red o sin respuesta a tiempo NO es lo mismo que una sesión
+        // inválida. Antes las dos acababan igual: una mala señal al abrir la
+        // app te mandaba al login aunque tu sesión fuera buena. Ahora se entra
+        // con la última ficha conocida; la siguiente petición que llegue al
+        // servidor vuelve a comprobarlo todo, y el servidor sigue siendo quien
+        // decide qué se puede hacer.
+        const guardado = getCurrentUserInfo();
+        if (esFalloDeRed(err) && guardado?.id) {
+          setUser(guardado);
+        } else {
+          // El servidor contestó y el interceptor ya intentó renovar: no hay sesión.
+          cerrarSesionLocal();
+        }
       } finally {
         setLoading(false);
       }
