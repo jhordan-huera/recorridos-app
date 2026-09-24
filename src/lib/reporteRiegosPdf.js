@@ -14,7 +14,7 @@
 
 import {
   COLOR, MARGEN, dinero, MESES, mayuscula, dosDigitos, fechaCorta,
-  bloque, regla, rotulo, membrete, recuadroTotal, pintarPies,
+  bloque, regla, rotulo, membrete, textoALaDerecha, recuadroTotal, pintarPies,
 } from './pdfComun.js';
 import { tablaDeRiegos, ordenarRiegos, sumar, diasDistintos } from './tablasPdf.js';
 
@@ -52,7 +52,7 @@ export const construirReporteRiegosPdf = async ({ riegos = [], mes, anio, usuari
   doc.text('Riego de césped', MARGEN + 14.5, 27.5);
 
   doc.setFont('helvetica', 'bold').setFontSize(6.2).setTextColor(...COLOR.tenue);
-  doc.text('ESTADO DE CUENTA · RIEGOS', derecha, 17.5, { align: 'right', charSpace: 0.4 });
+  textoALaDerecha(doc, 'ESTADO DE CUENTA · RIEGOS', derecha, 17.5, 0.4);
   doc.setFont('helvetica', 'bold').setFontSize(11).setTextColor(...COLOR.texto);
   doc.text(`N.º ${numeroDoc}`, derecha, 23.5, { align: 'right' });
 

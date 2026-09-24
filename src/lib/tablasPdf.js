@@ -10,7 +10,7 @@ import {
   COLOR, MARGEN, dinero, hora, etiquetaDia, cabeceraDeContinuacion,
 } from './pdfComun.js';
 
-const TIPO = { traer: 'Traer', llevar: 'Llevar', ambos: 'Ida y vuelta' };
+const TIPO = { traer: 'Traer', llevar: 'Llevar' };
 
 /** Día del mes de un registro, ya venga calculado o haya que leerlo. */
 const diaDe = (registro) => (
@@ -61,6 +61,9 @@ const ESTILOS = {
     lineWidth: { bottom: 0.5 }, lineColor: COLOR.acento,
   },
   bodyStyles: { lineWidth: { bottom: 0.1 }, lineColor: COLOR.linea },
+  // Una fila que no cabe entera pasa completa a la página siguiente. Partirla
+  // dejaba en la hoja nueva pasajeros sueltos, sin día, vehículo ni costo.
+  rowPageBreak: 'avoid',
 };
 
 /**
@@ -74,6 +77,9 @@ export const tablaDeRecorridos = (doc, autoTable, {
 }) => {
   let ultimoDia = null;
   const filas = [];
+  // El día de cada fila, aunque no se escriba: hace falta para repetirlo si
+  // la fila abre una página nueva.
+  const diaDeFila = [];
 
   recorridos.forEach((r) => {
     const dia = diaDe(r);
@@ -94,21 +100,36 @@ export const tablaDeRecorridos = (doc, autoTable, {
     ];
 
     if (r.notas) {
-      // Sin línea inferior: la fila y su nota son una sola unidad.
-      filas.push(celdas.map((content) => ({ content, styles: { lineWidth: 0 } })));
+      // La celda del día abarca las dos filas (rowSpan): autoTable trata así el
+      // recorrido y su nota como un bloque, y si no caben juntos los pasa
+      // enteros a la página siguiente. Sin esto, la nota podía quedar sola
+      // arriba de la hoja nueva sin saber de qué viaje era.
+      const [celdaDia, ...resto] = celdas;
+      filas.push([
+        { content: celdaDia, rowSpan: 2, styles: { lineWidth: { bottom: 0.1 }, lineColor: COLOR.linea } },
+        // Sin línea inferior: la fila y su nota son una sola unidad.
+        ...resto.map((content) => ({ content, styles: { lineWidth: 0 } })),
+      ]);
+      diaDeFila.push(etiquetaDia(dia, mes, anio));
       filas.push([{
         content: `Nota:  ${r.notas}`,
-        colSpan: 7,
+        colSpan: 6,
         styles: {
           fontSize: 8, textColor: COLOR.suave, fontStyle: 'italic',
-          cellPadding: { top: 0, bottom: 2.6, left: 33, right: 3 },
+          // Empieza en la columna de la hora: 14 mm la salta y alinea la nota
+          // con el vehículo.
+          cellPadding: { top: 0, bottom: 2.6, left: 16, right: 3 },
           lineWidth: { bottom: 0.1 }, lineColor: COLOR.linea,
         },
       }]);
+      diaDeFila.push(null);    // la fila de la nota no tiene celda de día
     } else {
+      diaDeFila.push(etiquetaDia(dia, mes, anio));
       filas.push(celdas);
     }
   });
+
+  let paginaConDia = 0;
 
   autoTable(doc, {
     ...ESTILOS,
@@ -130,6 +151,13 @@ export const tablaDeRecorridos = (doc, autoTable, {
     // alineado a la izquierda sobre cifras alineadas a la derecha.
     didParseCell: ({ column, cell, section }) => {
       if (section === 'head' && column.index === 6) cell.styles.halign = 'right';
+    },
+    // El día solo se escribe en el primer viaje de cada día. Si una página
+    // empieza a mitad de un día, su primera fila quedaría sin fecha: se repite.
+    willDrawCell: ({ section, column, row, cell, pageNumber }) => {
+      if (section !== 'body' || column.index !== 0 || pageNumber === paginaConDia) return;
+      paginaConDia = pageNumber;
+      if (!cell.text.join('').trim() && diaDeFila[row.index]) cell.text = [diaDeFila[row.index]];
     },
     didDrawPage: cabeceraDeContinuacion(doc, {
       etiqueta: etiquetaContinuacion, numeroDoc, periodo, util, derecha,

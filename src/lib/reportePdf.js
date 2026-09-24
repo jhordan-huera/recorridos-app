@@ -17,7 +17,7 @@
 
 import {
   COLOR, MARGEN, dinero, MESES, mayuscula, dosDigitos, fechaCorta,
-  bloque, regla, rotulo, membrete, pintarPies,
+  bloque, regla, rotulo, membrete, textoALaDerecha, pintarPies,
 } from './pdfComun.js';
 import {
   tablaDeRecorridos, ordenarRecorridos, sumar, diasDistintos, desglosePorTipo,
@@ -63,7 +63,7 @@ export const construirReportePdf = async ({ recorridos = [], mes, anio, usuario 
   doc.text('Servicio de transporte', MARGEN + 14.5, 27.5);
 
   doc.setFont('helvetica', 'bold').setFontSize(6.2).setTextColor(...COLOR.tenue);
-  doc.text('ESTADO DE CUENTA', derecha, 17.5, { align: 'right', charSpace: 0.4 });
+  textoALaDerecha(doc, 'ESTADO DE CUENTA', derecha, 17.5, 0.4);
   doc.setFont('helvetica', 'bold').setFontSize(11).setTextColor(...COLOR.texto);
   doc.text(`N.º ${numeroDoc}`, derecha, 23.5, { align: 'right' });
 
@@ -80,7 +80,7 @@ export const construirReportePdf = async ({ recorridos = [], mes, anio, usuario 
   doc.rect(xCaja, 39, 1.4, 21, 'F');   // filete de acento en el canto
 
   doc.setFont('helvetica', 'bold').setFontSize(6.2).setTextColor(...COLOR.suave);
-  doc.text('TOTAL DEL PERIODO', derecha - 5, 46, { align: 'right', charSpace: 0.4 });
+  textoALaDerecha(doc, 'TOTAL DEL PERIODO', derecha - 5, 46, 0.4);
   doc.setFont('helvetica', 'bold').setFontSize(19).setTextColor(...COLOR.acento);
   doc.text(dinero.format(total), derecha - 5, 55.5, { align: 'right' });
 

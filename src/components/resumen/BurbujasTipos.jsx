@@ -7,7 +7,6 @@ import React from 'react';
 const ESTILO = {
   traer: { burbuja: 'bg-positive/22 text-positive', barra: 'bg-positive', punto: 'bg-positive' },
   llevar: { burbuja: 'bg-caution/22 text-caution', barra: 'bg-caution', punto: 'bg-caution' },
-  ambos: { burbuja: 'bg-accent/18 text-accent', barra: 'bg-accent', punto: 'bg-accent' },
 };
 
 /*
@@ -89,7 +88,7 @@ const BurbujasTipos = ({ tipos }) => {
         })}
       </div>
 
-      <ul className="grid grid-cols-3 gap-2.5 sm:w-44 sm:grid-cols-1">
+      <ul className="grid grid-cols-2 gap-2.5 sm:w-44 sm:grid-cols-1">
         {tipos.map((tipo, i) => (
           <li key={tipo.clave} className="rounded-control border border-separator/60 p-3">
             <p className="truncate text-caption text-label-secondary">{tipo.etiqueta}</p>

@@ -76,6 +76,20 @@ export const rotulo = (doc, texto, x, y) => {
   doc.text(texto, x, y, { charSpace: 0.4 });
 };
 
+/**
+ * Texto alineado a la derecha con espaciado entre letras.
+ *
+ * jsPDF, con align: 'right', calcula el ancho SIN el charSpace y luego lo
+ * dibuja con él: el texto se corría hacia la derecha tanto como el espaciado
+ * acumulado (unos 7 mm en "TOTAL DEL PERIODO"), y se salía de su recuadro y
+ * del margen. Aquí se mide el ancho real y se dibuja alineado a la izquierda
+ * desde donde tiene que empezar para terminar justo en `x`.
+ */
+export const textoALaDerecha = (doc, texto, x, y, charSpace = 0) => {
+  const ancho = doc.getTextWidth(texto) + charSpace * Math.max(0, texto.length - 1);
+  doc.text(texto, x - ancho, y, { charSpace });
+};
+
 export const regla = (doc, y, desde, ancho, grosor = 0.2, color = COLOR.linea) => {
   doc.setDrawColor(...color).setLineWidth(grosor);
   doc.line(desde, y, desde + ancho, y);
@@ -106,7 +120,7 @@ export const recuadroTotal = (doc, { x, y, ancho, alto, etiqueta, valor, derecha
     doc.text(etiqueta.toUpperCase(), x + 6, y + alto * 0.63, { charSpace: 0.3 });
   } else {
     doc.setFont('helvetica', 'bold').setFontSize(6.2).setTextColor(...COLOR.suave);
-    doc.text(etiqueta.toUpperCase(), derecha - 5, y + alto * 0.33, { align: 'right', charSpace: 0.4 });
+    textoALaDerecha(doc, etiqueta.toUpperCase(), derecha - 5, y + alto * 0.33, 0.4);
   }
   doc.setFont('helvetica', 'bold').setFontSize(tamValor).setTextColor(...COLOR.acento);
   doc.text(valor, derecha - 5, y + alto * (etiquetaIzquierda ? 0.68 : 0.79), { align: 'right' });

@@ -120,14 +120,13 @@ const rangoDelHistorial = (mes, anio) => {
   };
 };
 
-const tipoTone = { traer: 'positive', llevar: 'caution', ambos: 'accent' };
-const tipoLabel = { traer: 'Traer', llevar: 'Llevar', ambos: 'Ambos' };
+const tipoTone = { traer: 'positive', llevar: 'caution' };
+const tipoLabel = { traer: 'Traer', llevar: 'Llevar' };
 
 /** Leyenda del cronograma: un color por cada cosa que se pinta en una casilla. */
 const LEYENDA = [
   { color: 'bg-positive', texto: 'Traer', modulo: 'recorridos' },
   { color: 'bg-caution', texto: 'Llevar', modulo: 'recorridos' },
-  { color: 'bg-accent', texto: 'Ambos', modulo: 'recorridos' },
   { color: 'bg-info', texto: 'Riego', modulo: 'riegos' },
 ];
 
@@ -784,7 +783,7 @@ const Dashboard = () => {
   }
 
   const tiposDelMes = useMemo(() => {
-    const cuenta = { traer: 0, llevar: 0, ambos: 0 };
+    const cuenta = { traer: 0, llevar: 0 };
     Object.values(recorridosMensuales).flat().forEach((r) => {
       if (r.tipo_recorrido in cuenta) cuenta[r.tipo_recorrido] += 1;
     });
@@ -792,7 +791,6 @@ const Dashboard = () => {
     return [
       { clave: 'traer', etiqueta: tipoLabel.traer, cuenta: cuenta.traer },
       { clave: 'llevar', etiqueta: tipoLabel.llevar, cuenta: cuenta.llevar },
-      { clave: 'ambos', etiqueta: tipoLabel.ambos, cuenta: cuenta.ambos },
     ];
   }, [recorridosMensuales]);
 
@@ -1097,8 +1095,8 @@ const Dashboard = () => {
 
             {/* En el móvil la casilla solo tiene puntos de color, así que la
                 leyenda es la única forma de leerlos. Va cada tipo por separado
-                porque los recorridos ya se pintan según sean de traer, llevar
-                o ambos: una sola entrada "Recorridos" mentiría sobre el color. */}
+                porque los recorridos ya se pintan según sean de traer o de
+                llevar: una sola entrada "Recorridos" mentiría sobre el color. */}
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-separator/40 px-5 py-3">
               {LEYENDA
                 .filter(({ modulo }) => (modulo === 'riegos' ? puedeRiegos : puedeRecorridos))
@@ -1310,7 +1308,6 @@ const Dashboard = () => {
               <Select label="Tipo de servicio" name="tipo_recorrido" value={formData.tipo_recorrido} onChange={handleChange} required disabled={saving}>
                 <option value="traer">Traer estudiantes</option>
                 <option value="llevar">Llevar estudiantes</option>
-                <option value="ambos">Ambos</option>
               </Select>
             </div>
 
