@@ -14,7 +14,7 @@ import { generarReporteGeneralPdf } from '../lib/reporteGeneralPdf.js';
 import { generarLiquidacionPdf } from '../lib/liquidacionPdf.js';
 import { useApp } from '../context/AppContext';
 import {
-  updateRecorrido, deleteRecorrido,
+  updateRecorrido,
   getAllRecorridos, getAllNinos, getAllVehiculos, getAllRiegos,
   getCierres, terminarMes, reabrirMes,
   mensajeDeError, fueBien, mensajeDeRespuesta, esFalloDeRed,
@@ -238,7 +238,7 @@ const MarcaPendiente = ({ registro }) => (
 const Dashboard = () => {
   const { showAlert } = useAlert();
   const { user, isAdmin, puedeRecorridos, puedeRiegos } = useAuth();
-  const { pendientes, registrar, descartar } = usePendientes();
+  const { pendientes, registrar, borrar } = usePendientes();
   const { resolvedTheme } = useApp();
   const reduceMotion = useReducedMotion();
   const colors = PALETA_GRAFICO[resolvedTheme] || PALETA_GRAFICO.light;
@@ -682,23 +682,21 @@ const Dashboard = () => {
   const confirmDelete = async () => {
     if (!recorridoAEliminar) return;
     try {
-      // Uno que aún no se ha enviado solo existe en este teléfono: se descarta.
-      if (recorridoAEliminar._pendiente) {
-        await descartar(recorridoAEliminar.id);
-        showAlert('success', 'Recorrido descartado');
-        return;
-      }
-      const response = await deleteRecorrido(recorridoAEliminar.id);
-      if (fueBien(response)) {
+      // Sin conexión se guarda el borrado y el recorrido deja de verse ya.
+      const { descartado, guardadoSinConexion, respuesta } = await borrar({
+        tipo: 'recorrido', registro: recorridoAEliminar,
+      });
+      if (descartado) showAlert('success', 'Recorrido descartado');
+      else if (guardadoSinConexion) {
+        showAlert('info', 'Sin conexión: el recorrido ya no aparece y se borrará del servidor cuando vuelva la conexión.', 6000);
+      } else if (fueBien(respuesta)) {
         showAlert('success', 'Recorrido eliminado');
         loadRecorridosData({ silencioso: true });
       } else {
-        showAlert('error', mensajeDeRespuesta(response));
+        showAlert('error', mensajeDeRespuesta(respuesta));
       }
     } catch (error) {
-      showAlert('error', esFalloDeRed(error)
-        ? 'Sin conexión: para borrar un recorrido que ya está en el servidor hace falta internet.'
-        : 'No se pudo eliminar: ' + mensajeDeError(error));
+      showAlert('error', 'No se pudo eliminar: ' + mensajeDeError(error));
     } finally {
       setShowDeleteModal(false);
       setRecorridoAEliminar(null);

@@ -4,7 +4,7 @@ import {
 } from 'lucide-react';
 import { useConexion } from '../lib/conexion';
 import { usePendientes } from '../context/PendientesContext';
-import { comoRegistro } from '../lib/pendientes';
+import { comoRegistro, esBorrado } from '../lib/pendientes';
 import { MESES, dosDigitos } from '../lib/fechas';
 import Modal from './ui/Modal';
 import Button from './ui/Button';
@@ -38,13 +38,15 @@ const TONOS = {
   critical: 'border-critical/30 bg-critical/10 text-critical',
 };
 
-/** Una fila de la lista de pendientes. */
+/** Una fila de la lista de pendientes: un alta o un borrado. */
 const Pendiente = ({ item, ocupado, onDescartar, onReintentar }) => {
   const [confirmando, setConfirmando] = useState(false);
-  const r = comoRegistro(item);
+  const r = comoRegistro(item) || {};
   const esRiego = item.tipo === 'riego';
   const Icono = esRiego ? Droplets : RouteIcon;
   const rechazado = item.estado === 'rechazado';
+  const borrado = esBorrado(item);
+  const que = esRiego ? 'Riego' : `Recorrido · ${TIPO_RECORRIDO[r.tipo_recorrido] || r.tipo_recorrido}`;
 
   return (
     <li className="rounded-control border border-separator/60 bg-surface-secondary p-3">
@@ -56,10 +58,12 @@ const Pendiente = ({ item, ocupado, onDescartar, onReintentar }) => {
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <p className="text-subhead font-semibold text-label">
-              {esRiego ? 'Riego' : `Recorrido · ${TIPO_RECORRIDO[r.tipo_recorrido] || r.tipo_recorrido}`}
+              {borrado ? `Borrar: ${que.charAt(0).toLowerCase()}${que.slice(1)}` : que}
             </p>
             <Badge tone={rechazado ? 'critical' : 'caution'} className="!py-0.5">
-              {rechazado ? 'No se pudo enviar' : 'Por enviar'}
+              {rechazado
+                ? (borrado ? 'No se pudo borrar' : 'No se pudo enviar')
+                : (borrado ? 'Por borrar' : 'Por enviar')}
             </Badge>
           </div>
           <p className="tabular mt-0.5 text-footnote text-label-secondary">
@@ -80,7 +84,12 @@ const Pendiente = ({ item, ocupado, onDescartar, onReintentar }) => {
             Reintentar
           </Button>
         )}
-        {confirmando ? (
+        {borrado ? (
+          // Cancelar un borrado no pierde nada: el registro vuelve a verse.
+          <Button size="sm" variant="ghost" disabled={ocupado} onClick={() => onDescartar(item.id)}>
+            No borrarlo
+          </Button>
+        ) : confirmando ? (
           <>
             <Button size="sm" variant="secondary" onClick={() => setConfirmando(false)}>No, conservarlo</Button>
             <Button size="sm" variant="destructive" disabled={ocupado} onClick={() => onDescartar(item.id)}>
@@ -135,10 +144,10 @@ const EstadoDeConexion = () => {
   } else if (rechazados > 0) {
     tono = 'critical';
     Icono = TriangleAlert;
-    titulo = rechazados === 1 ? '1 registro no se pudo enviar' : `${rechazados} registros no se pudieron enviar`;
+    titulo = rechazados === 1 ? '1 cambio no se pudo enviar' : `${rechazados} cambios no se pudieron enviar`;
     detalle = 'Ábrelo para ver qué pasó';
   } else {
-    titulo = sinEnviar === 1 ? '1 registro por enviar' : `${sinEnviar} registros por enviar`;
+    titulo = sinEnviar === 1 ? '1 cambio por enviar' : `${sinEnviar} cambios por enviar`;
     detalle = 'Se envían solos en cuanto haya conexión';
   }
 
@@ -177,7 +186,7 @@ const EstadoDeConexion = () => {
         isOpen={abierto}
         onClose={() => setAbierto(false)}
         title="Guardado en este teléfono"
-        description="Registros hechos sin conexión que aún no han llegado al servidor. Se envían solos cuando hay conexión y la app está abierta."
+        description="Lo registrado o borrado sin conexión que aún no ha llegado al servidor. Se envía solo cuando hay conexión y la app está abierta."
         footer={
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <Button variant="secondary" onClick={() => setAbierto(false)}>Cerrar</Button>
@@ -194,7 +203,7 @@ const EstadoDeConexion = () => {
       >
         {porEnviar.length === 0 ? (
           <p className="py-6 text-center text-subhead text-label-secondary">
-            Todo lo registrado ya llegó al servidor.
+            Todo ya llegó al servidor.
           </p>
         ) : (
           <ul className="space-y-2.5">
