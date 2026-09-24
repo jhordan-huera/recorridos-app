@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, useReducedMotion } from 'motion/react';
-import { AtSign, Lock, ArrowRight, Route, AlertCircle, Eye, EyeOff } from 'lucide-react';
+import { AtSign, Lock, ArrowRight, NotebookPen, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { rutaDeInicio } from '../lib/navegacion';
 import Button from '../components/ui/Button';
@@ -72,11 +72,11 @@ const Login = () => {
         >
           <div className="mb-8">
             <span className="mb-6 inline-flex h-12 w-12 items-center justify-center rounded-panel bg-accent text-white md:hidden">
-              <Route size={24} strokeWidth={2.3} />
+              <NotebookPen size={23} strokeWidth={2.2} />
             </span>
             <h1 className="text-large-title font-semibold text-label">Bienvenido</h1>
             <p className="mt-1.5 text-subhead text-label-secondary">
-              Entra con tu cuenta para gestionar los recorridos.
+              Entra con tu cuenta para llevar tus registros al día.
             </p>
           </div>
 
@@ -155,7 +155,7 @@ const Login = () => {
           </form>
 
           <p className="mt-10 text-center text-footnote text-label-tertiary">
-            © {new Date().getFullYear()} Recorridos
+            © {new Date().getFullYear()} Bitácora
           </p>
         </motion.div>
       </div>
@@ -171,22 +171,22 @@ const Login = () => {
 
         <div className="relative">
           <span className="flex h-11 w-11 items-center justify-center rounded-panel bg-accent text-white">
-            <Route size={22} strokeWidth={2.3} />
+            <NotebookPen size={21} strokeWidth={2.2} />
           </span>
         </div>
 
         <div className="relative max-w-md">
           <h2 className="text-display font-semibold text-label">
-            Cada ruta,<br />bajo control.
+            Todo lo que haces,<br />bajo control.
           </h2>
           <p className="mt-5 text-body leading-relaxed text-label-secondary">
-            Planifica recorridos, asigna vehículos y sigue el gasto del mes desde un
-            único panel.
+            Registra recorridos y riegos, sigue el gasto del mes y emite tus estados
+            de cuenta desde un único lugar.
           </p>
         </div>
 
         <p className="relative text-footnote text-label-tertiary">
-          Gestión de transporte escolar
+          Transporte, riego y cobros
         </p>
       </div>
     </div>

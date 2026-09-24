@@ -7,34 +7,27 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
+      includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
       manifest: {
-        name: 'Recorridos',
-        short_name: 'Recorridos',
-        description: 'App de recorridos en tiempo real',
-        theme_color: '#0d6efd',
-        background_color: '#ffffff',
+        name: 'Bitácora',
+        short_name: 'Bitácora',
+        description: 'Registro de recorridos, riegos y cobros',
+        // Los colores de la app, no los de Bootstrap: la barra del sistema y la
+        // pantalla de arranque al abrirla instalada se funden con el fondo.
+        theme_color: '#f2f2f7',
+        background_color: '#f2f2f7',
+        lang: 'es',
         display: 'standalone',
         start_url: '/',
         scope: '/',
         orientation: 'portrait',
+        // El maskable es un icono aparte, con el fondo hasta el borde y el
+        // dibujo dentro del círculo seguro: Android lo recorta con la forma
+        // que elige cada fabricante, y reutilizar el normal cortaba el dibujo.
         icons: [
-          {
-            src: '/pwa-192x192.webp',
-            sizes: '192x192',
-            type: 'image/webp'
-          },
-          {
-            src: '/pwa-512x512.webp',
-            sizes: '512x512',
-            type: 'image/webp'
-          },
-          {
-            src: '/pwa-512x512.webp',
-            sizes: '512x512',
-            type: 'image/webp',
-            purpose: 'any maskable'
-          }
+          { src: '/pwa-192x192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: '/pwa-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+          { src: '/pwa-maskable-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ]
       },
       devOptions: {
