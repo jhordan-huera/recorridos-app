@@ -2,6 +2,7 @@ import React from 'react';
 import { useAuth } from '../../context/AuthContext';
 import Header from './Header';
 import BottomNav from './BottomNav';
+import EstadoDeConexion from '../EstadoDeConexion';
 
 /**
  * Armazón de la aplicación.
@@ -23,6 +24,7 @@ const Layout = ({ children }) => {
         className="mx-auto w-full max-w-[2000px] flex-1 px-4 pt-4 lg:px-6
                    pb-[calc(env(safe-area-inset-bottom,0px)+5.5rem)] lg:pb-10 md:pt-6"
       >
+        {user && <EstadoDeConexion />}
         {children}
       </main>
 

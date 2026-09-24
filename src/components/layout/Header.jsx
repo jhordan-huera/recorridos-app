@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import {
-  LogOut, CircleUser, Route,
+  LogOut, CircleUser, NotebookPen,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { entradasDeMenu, estaActiva } from '../../lib/navegacion';
@@ -85,9 +85,9 @@ const Header = () => {
         {/* Marca */}
         <Link to="/dashboard" className="tappable flex shrink-0 items-center gap-2.5">
           <span className="flex h-8 w-8 items-center justify-center rounded-field bg-accent text-white">
-            <Route size={17} strokeWidth={2.4} />
+            <NotebookPen size={16} strokeWidth={2.3} />
           </span>
-          <span className="text-headline font-semibold text-label">Recorridos</span>
+          <span className="text-headline font-semibold text-label">Bitácora</span>
         </Link>
 
         {/* Navegación */}

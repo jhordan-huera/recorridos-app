@@ -7,6 +7,7 @@ import LoadingBar from './components/ui/LoadingBar';
 import { AppProvider } from './context/AppContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { AlertProvider } from './context/AlertContext';
+import { PendientesProvider } from './context/PendientesContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import AdminRoute from './components/AdminRoute';
 import PantallaDeCarga from './components/PantallaDeCarga';
@@ -175,7 +176,9 @@ function App() {
   return (
     <AlertProvider>
       <AuthProvider>
-        <AppContent />
+        <PendientesProvider>
+          <AppContent />
+        </PendientesProvider>
       </AuthProvider>
     </AlertProvider>
   );

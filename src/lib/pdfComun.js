@@ -124,10 +124,10 @@ export const membrete = (doc, y, tam = 10) => {
   doc.setFillColor(...COLOR.acento);
   doc.roundedRect(MARGEN, y, tam, tam, 1.4, 1.4, 'F');
   doc.setFont('helvetica', 'bold').setFontSize(tam * 0.7).setTextColor(...COLOR.blanco);
-  doc.text('R', MARGEN + tam / 2, y + tam * 0.685, { align: 'center' });
+  doc.text('B', MARGEN + tam / 2, y + tam * 0.685, { align: 'center' });
 
   doc.setFont('helvetica', 'bold').setFontSize(tam * 0.82).setTextColor(...COLOR.texto);
-  doc.text('RECORRIDOS', MARGEN + tam + 4.5, y + tam * 0.66, { charSpace: 1.3 });
+  doc.text('BITÁCORA', MARGEN + tam + 4.5, y + tam * 0.66, { charSpace: 1.3 });
 };
 
 /** Recuadro de total con filete de acento en el canto. */

@@ -328,7 +328,7 @@ const Profile = () => {
               />
             </SettingGroup>
 
-            <p className="text-center text-footnote text-label-tertiary">Recorridos v1.2.0</p>
+            <p className="text-center text-footnote text-label-tertiary">Bitácora v1.2.0</p>
           </motion.div>
         )}
       </AnimatePresence>

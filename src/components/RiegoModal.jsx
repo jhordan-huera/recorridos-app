@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useAlert } from '../context/AlertContext';
+import { usePendientes } from '../context/PendientesContext';
 import {
-  createRiego, updateRiego, mensajeDeError, fueBien, mensajeDeRespuesta,
+  updateRiego, mensajeDeError, fueBien, mensajeDeRespuesta, esFalloDeRed,
 } from '../services/api';
 import { hoyISO, horaActual } from '../lib/fechas';
 import Modal from './ui/Modal';
@@ -28,9 +29,14 @@ const desdeRiego = (riego) => ({
  * Vive fuera de la pantalla de Riegos porque el Resumen registra riegos con
  * este mismo formulario. Dos copias acabarían aceptando cosas distintas, y la
  * que menos se mira es la que se queda atrás.
+ *
+ * Sin conexión, un riego nuevo se guarda en el teléfono y se envía después;
+ * uno que aún no se ha enviado (`riego._pendiente`) se corrige ahí mismo. Lo
+ * que no se puede sin conexión es cambiar un riego que ya está en el servidor.
  */
 const RiegoModal = ({ abierto, onCerrar, riego = null, onGuardado }) => {
   const { showAlert } = useAlert();
+  const { registrar, editar } = usePendientes();
   const [formData, setFormData] = useState(formVacio);
   const [guardando, setGuardando] = useState(false);
 
@@ -55,17 +61,40 @@ const RiegoModal = ({ abierto, onCerrar, riego = null, onGuardado }) => {
     // Solo se manda si el usuario escribió algo; si no, manda el DEFAULT.
     if (String(formData.costo).trim() !== '') datos.costo = parseFloat(formData.costo);
 
+    const listo = (tipo, mensaje) => {
+      showAlert(tipo, mensaje, tipo === 'success' ? 4000 : 6000);
+      onCerrar();
+      onGuardado?.();
+    };
+
     try {
-      const respuesta = riego ? await updateRiego(riego.id, datos) : await createRiego(datos);
-      if (fueBien(respuesta)) {
-        showAlert('success', riego ? 'Riego actualizado' : 'Riego registrado');
-        onCerrar();
-        onGuardado?.();
+      if (riego?._pendiente) {
+        await editar(riego.id, { datos });
+        listo('success', 'Cambios guardados. El riego se enviará cuando haya conexión.');
+        return;
+      }
+
+      if (riego) {
+        const respuesta = await updateRiego(riego.id, datos);
+        if (fueBien(respuesta)) listo('success', 'Riego actualizado');
+        else showAlert('error', mensajeDeRespuesta(respuesta));
+        return;
+      }
+
+      const { respuesta, guardadoSinConexion } = await registrar({ tipo: 'riego', datos });
+      if (guardadoSinConexion) {
+        listo('info', 'Sin conexión: el riego se guardó en este teléfono y se enviará solo cuando vuelva la conexión.');
+      } else if (fueBien(respuesta)) {
+        listo('success', 'Riego registrado');
       } else {
         showAlert('error', mensajeDeRespuesta(respuesta));
       }
     } catch (error) {
-      showAlert('error', `No se pudo ${riego ? 'actualizar' : 'registrar'}: ` + mensajeDeError(error));
+      if (riego && !riego._pendiente && esFalloDeRed(error)) {
+        showAlert('error', 'Sin conexión: para cambiar un riego que ya está en el servidor hace falta internet. Los riegos nuevos sí se pueden registrar sin conexión.', 7000);
+      } else {
+        showAlert('error', `No se pudo ${riego ? 'actualizar' : 'registrar'}: ` + mensajeDeError(error));
+      }
     } finally {
       setGuardando(false);
     }

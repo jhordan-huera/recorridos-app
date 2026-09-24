@@ -29,9 +29,11 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  /** Devuelve la promesa del borrado de las copias: esperarla antes de recargar. */
   const cerrarSesionLocal = useCallback(() => {
-    limpiarSesion();
+    const borrado = limpiarSesion();
     setUser(null);
+    return borrado;
   }, []);
 
   // Si el refresh token también caduca o se revoca, api.js avisa por aquí en
@@ -100,7 +102,7 @@ export const AuthProvider = ({ children }) => {
     // red, token ya caducado) se cierra igualmente en local: nunca se deja al
     // usuario atrapado en una sesión que quiere abandonar.
     try { await logoutApi(); } catch { /* ignorado a propósito */ }
-    cerrarSesionLocal();
+    await cerrarSesionLocal();
     window.location.href = '/login';
   };
 

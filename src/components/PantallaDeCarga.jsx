@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Route as RouteIcon } from 'lucide-react';
+import { NotebookPen } from 'lucide-react';
 
 /** A partir de cuánto se avisa de que está tardando. */
 const AVISO_MS = 6000;
@@ -31,11 +31,11 @@ const PantallaDeCarga = () => {
       aria-label="Cargando la aplicación"
     >
       <div className="carga-entrada flex h-14 w-14 items-center justify-center rounded-panel bg-accent text-white shadow-level-2">
-        <RouteIcon size={26} strokeWidth={2.3} />
+        <NotebookPen size={25} strokeWidth={2.2} />
       </div>
 
       <div className="carga-entrada carga-entrada-2 flex flex-col items-center gap-3">
-        <p className="text-subhead font-medium text-label-secondary">Recorridos</p>
+        <p className="text-subhead font-medium text-label-secondary">Bitácora</p>
         <span className="relative block h-1 w-32 overflow-hidden rounded-full bg-fill/15">
           <span className="carga-indeterminada absolute inset-y-0 left-0 block w-2/5 rounded-full bg-accent" />
         </span>

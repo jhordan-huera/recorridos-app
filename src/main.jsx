@@ -27,6 +27,24 @@ Sentry.init({
   debug: false,
 });
 
+/*
+ * Si se publica una versión nueva con la app abierta, las pantallas que aún
+ * no se habían cargado ya no existen en el servidor con su nombre anterior y
+ * abrirlas fallaba con una pantalla en blanco. Se recarga una vez para tomar
+ * la versión nueva. El registro en sessionStorage evita recargar en bucle si
+ * el fallo es otro.
+ */
+window.addEventListener('vite:preloadError', (evento) => {
+  const CLAVE = 'recargaPorVersionNueva';
+  try {
+    const ultima = Number(sessionStorage.getItem(CLAVE) || 0);
+    if (Date.now() - ultima < 30_000) return;
+    sessionStorage.setItem(CLAVE, String(Date.now()));
+  } catch { /* sin sessionStorage: se recarga igualmente */ }
+  evento.preventDefault();
+  window.location.reload();
+});
+
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <App />
