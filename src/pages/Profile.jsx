@@ -98,11 +98,11 @@ const SeccionDesplegable = ({ id, icono: Icono, titulo, abierta, onAlternar, chi
         aria-controls={`perfil-${id}`}
         className="tappable flex w-full items-center gap-3 p-2.5 pr-3 text-left"
       >
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface text-marino shadow-level-1">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface text-[rgb(var(--c-marino))] shadow-level-1">
           <Icono size={19} strokeWidth={2.1} />
         </span>
         <span className="flex-1 text-subhead font-semibold text-label">{titulo}</span>
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface text-marino">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface text-[rgb(var(--c-marino))]">
           <ChevronDown
             size={17} strokeWidth={2.4}
             className={`transition-transform duration-[var(--t-base)] ${abierta ? 'rotate-180' : ''}`}
@@ -321,7 +321,7 @@ const Profile = () => {
         </div>
 
         <div className="mb-6 flex flex-col items-center text-center">
-          <span className="mb-3 mt-2 flex h-28 w-28 items-center justify-center rounded-full bg-gradient-to-br from-marino to-accent text-[2.75rem] font-bold text-white shadow-level-2 ring-4 ring-surface">
+          <span className="mb-3 mt-2 flex h-28 w-28 items-center justify-center rounded-full bg-gradient-to-br from-[rgb(var(--c-marino))] to-accent text-[2.75rem] font-bold text-white shadow-level-2 ring-4 ring-surface">
             {initial}
           </span>
           <p className="text-title3 font-bold text-label">{displayName || 'Usuario'}</p>
@@ -368,7 +368,7 @@ const Profile = () => {
           <button
             type="button"
             onClick={() => setShowLogoutConfirm(true)}
-            className="tappable flex h-12 items-center gap-4 rounded-full bg-gradient-to-r from-marino to-accent pl-6 pr-1.5 text-subhead font-semibold text-white shadow-level-2"
+            className="tappable flex h-12 items-center gap-4 rounded-full bg-gradient-to-r from-[rgb(var(--c-marino))] to-accent pl-6 pr-1.5 text-subhead font-semibold text-white shadow-level-2"
           >
             Cerrar sesión
             <span className="flex h-9 w-9 items-center justify-center rounded-full bg-critical text-white">

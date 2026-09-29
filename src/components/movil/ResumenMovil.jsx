@@ -33,7 +33,7 @@ const Chip = ({ children, onClick, principal = false }) => (
     type="button"
     onClick={() => { haptics.tick(); onClick(); }}
     className={`tappable flex shrink-0 items-center gap-1.5 rounded-full px-4 py-2.5 text-footnote font-semibold transition-colors ${
-      principal ? 'bg-marino text-white shadow-level-1' : 'bg-pastel text-label'
+      principal ? 'bg-[rgb(var(--c-marino))] text-white shadow-level-1' : 'bg-[rgb(var(--c-pastel))] text-label'
     }`}
   >
     {children}
@@ -42,8 +42,8 @@ const Chip = ({ children, onClick, principal = false }) => (
 
 /** Un dato de la tarjeta del mes, como los "Fecha / Hora" de una cita. */
 const Dato = ({ icono: Icono, etiqueta, valor }) => (
-  <div className="flex min-w-0 items-center gap-2 rounded-[1rem] bg-pastel/60 px-2.5 py-2">
-    <Icono size={17} strokeWidth={2} className="shrink-0 text-marino" aria-hidden="true" />
+  <div className="flex min-w-0 items-center gap-2 rounded-[1rem] bg-[rgb(var(--c-pastel)/0.6)] px-2.5 py-2">
+    <Icono size={17} strokeWidth={2} className="shrink-0 text-[rgb(var(--c-marino))]" aria-hidden="true" />
     <div className="min-w-0">
       <p className="text-caption2 text-label-secondary">{etiqueta}</p>
       <p className="tabular truncate text-footnote font-bold text-label">{valor}</p>
@@ -69,7 +69,7 @@ const ResumenMovil = ({
     {/* Saludo */}
     <div className="mb-5 flex items-center gap-3">
       <Link to="/perfil" aria-label="Mi perfil" className="tappable">
-        <AvatarMovil fondo="bg-marino text-white" className="h-12 w-12 text-headline">{inicial}</AvatarMovil>
+        <AvatarMovil fondo="bg-[rgb(var(--c-marino))] text-white" className="h-12 w-12 text-headline">{inicial}</AvatarMovil>
       </Link>
       <div className="min-w-0 flex-1">
         <p className="text-footnote text-label-secondary">{saludo()},</p>
@@ -79,7 +79,7 @@ const ResumenMovil = ({
       <Link
         to="/perfil"
         aria-label="Ajustes"
-        className="tappable flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-surface text-marino shadow-level-1 ring-1 ring-separator/30"
+        className="tappable flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-surface text-[rgb(var(--c-marino))] shadow-level-1 ring-1 ring-separator/30"
       >
         <Settings size={20} strokeWidth={2.1} />
       </Link>
@@ -101,8 +101,8 @@ const ResumenMovil = ({
           <Plus size={16} strokeWidth={2.5} aria-hidden="true" /> Riego
         </Chip>
       )}
-      <BotonCircular etiqueta="Gasto por mes" icono={BarChart3} onClick={onGraficas} className="!h-10 !w-10 !bg-pastel !shadow-none !ring-0" />
-      <BotonCircular etiqueta="PDF del mes" icono={FileDown} onClick={onPdf} disabled={pdfDeshabilitado} className="!h-10 !w-10 !bg-pastel !shadow-none !ring-0 disabled:opacity-40" />
+      <BotonCircular etiqueta="Gasto por mes" icono={BarChart3} onClick={onGraficas} className="!h-10 !w-10 !bg-[rgb(var(--c-pastel))] !shadow-none !ring-0" />
+      <BotonCircular etiqueta="PDF del mes" icono={FileDown} onClick={onPdf} disabled={pdfDeshabilitado} className="!h-10 !w-10 !bg-[rgb(var(--c-pastel))] !shadow-none !ring-0 disabled:opacity-40" />
     </div>
 
     {/* La tarjeta del mes, dentro de su marco pastel */}
@@ -110,7 +110,7 @@ const ResumenMovil = ({
       <div className={`rounded-[1.7rem] p-1.5 ${TARJETA_PASTEL}`}>
         <div className="rounded-[1.4rem] bg-surface p-4 shadow-level-1">
           <div className="flex items-center gap-3">
-            <AvatarMovil fondo="bg-pastel text-marino" className="h-12 w-12 text-caption font-bold uppercase">
+            <AvatarMovil fondo="bg-[rgb(var(--c-pastel))] text-[rgb(var(--c-marino))]" className="h-12 w-12 text-caption font-bold uppercase">
               {MESES[mes - 1].slice(0, 3)}
             </AvatarMovil>
             <div className="min-w-0 flex-1">
@@ -120,13 +120,13 @@ const ResumenMovil = ({
             <div className="flex shrink-0 gap-1">
               <button
                 type="button" onClick={() => onCambiarMes(-1)} aria-label="Mes anterior"
-                className="tappable flex h-9 w-9 items-center justify-center rounded-full bg-pastel/70 text-marino"
+                className="tappable flex h-9 w-9 items-center justify-center rounded-full bg-[rgb(var(--c-pastel)/0.7)] text-[rgb(var(--c-marino))]"
               >
                 <ChevronLeft size={18} strokeWidth={2.3} />
               </button>
               <button
                 type="button" onClick={() => onCambiarMes(1)} aria-label="Mes siguiente"
-                className="tappable flex h-9 w-9 items-center justify-center rounded-full bg-pastel/70 text-marino"
+                className="tappable flex h-9 w-9 items-center justify-center rounded-full bg-[rgb(var(--c-pastel)/0.7)] text-[rgb(var(--c-marino))]"
               >
                 <ChevronRight size={18} strokeWidth={2.3} />
               </button>
@@ -152,7 +152,7 @@ const ResumenMovil = ({
               type="button"
               onClick={onPdf}
               disabled={pdfDeshabilitado}
-              className="tappable flex h-10 items-center justify-center gap-1.5 rounded-full bg-pastel text-footnote font-semibold text-marino disabled:opacity-40"
+              className="tappable flex h-10 items-center justify-center gap-1.5 rounded-full bg-[rgb(var(--c-pastel))] text-footnote font-semibold text-[rgb(var(--c-marino))] disabled:opacity-40"
             >
               <FileDown size={15} strokeWidth={2.2} /> PDF del mes
             </button>
@@ -164,7 +164,7 @@ const ResumenMovil = ({
     {/* Lo último, en dos columnas */}
     <SeccionMovil titulo="Lo último del mes" accion={ultimos.length ? { etiqueta: 'Ver todo', onClick: onCalendario } : null}>
       {ultimos.length === 0 ? (
-        <p className="rounded-[1.4rem] bg-pastel/60 px-4 py-6 text-center text-subhead text-label-secondary">
+        <p className="rounded-[1.4rem] bg-[rgb(var(--c-pastel)/0.6)] px-4 py-6 text-center text-subhead text-label-secondary">
           Todavía no hay nada registrado este mes.
         </p>
       ) : (

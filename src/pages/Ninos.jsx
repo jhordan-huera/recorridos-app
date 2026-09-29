@@ -187,7 +187,7 @@ const Ninos = () => {
                     subtitulo={nino.direccion || 'Sin dirección'}
                     valor={nino.telefono_contacto || 'Sin teléfono'}
                     iconoValor={Phone}
-                    claseIconoValor="text-marino"
+                    claseIconoValor="text-[rgb(var(--c-marino))]"
                     detalle="Teléfono de contacto"
                     onAbrir={() => handleEdit(nino)}
                     etiquetaAbrir={`Editar a ${nino.nombre} ${nino.apellidos}`}

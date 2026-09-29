@@ -15,8 +15,8 @@ import { springSnappy, haptics } from '../../lib/motion';
  * sombra corta. Sin el borde y la sombra, sobre el fondo azul del móvil
  * las tarjetas se fundían y no se veía dónde acababa una y empezaba otra.
  */
-export const TARJETA_PASTEL = 'bg-pastel ring-1 ring-inset ring-marino/[0.07] shadow-[0_2px_10px_-4px_rgb(var(--c-marino)/0.22)]';
-export const TARJETA_PASTEL_FUERTE = 'bg-pastel-strong ring-1 ring-inset ring-marino/[0.1] shadow-[0_4px_14px_-6px_rgb(var(--c-marino)/0.35)]';
+export const TARJETA_PASTEL = 'bg-[rgb(var(--c-pastel))] ring-1 ring-inset ring-[rgb(var(--c-marino)/0.07)] shadow-[0_2px_10px_-4px_rgb(var(--c-marino)/0.22)]';
+export const TARJETA_PASTEL_FUERTE = 'bg-[rgb(var(--c-pastel-2))] ring-1 ring-inset ring-[rgb(var(--c-marino)/0.1)] shadow-[0_4px_14px_-6px_rgb(var(--c-marino)/0.35)]';
 
 /** Botón redondo blanco, como los de las esquinas de la cabecera. */
 export const BotonCircular = ({ etiqueta, icono: Icono, onClick, className = '', ...props }) => {
@@ -29,7 +29,7 @@ export const BotonCircular = ({ etiqueta, icono: Icono, onClick, className = '',
       title={etiqueta}
       whileTap={reduceMotion ? { opacity: 0.6 } : { scale: 0.9 }}
       transition={springSnappy}
-      className={`tappable flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-surface text-marino
+      className={`tappable flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-surface text-[rgb(var(--c-marino))]
                   shadow-level-1 ring-1 ring-separator/30 ${className}`}
       {...props}
     >
@@ -79,7 +79,7 @@ export const FiltrosMovil = ({ opciones, valor, onCambiar, etiqueta }) => (
           aria-checked={activa}
           onClick={() => { haptics.tick(); onCambiar(opcion.valor); }}
           className={`tappable shrink-0 rounded-full px-4 py-2 text-footnote font-semibold transition-colors ${
-            activa ? 'bg-marino text-white shadow-level-1' : 'bg-pastel text-label-secondary'
+            activa ? 'bg-[rgb(var(--c-marino))] text-white shadow-level-1' : 'bg-[rgb(var(--c-pastel))] text-label-secondary'
           }`}
         >
           {opcion.etiqueta}
@@ -97,7 +97,7 @@ export const CifrasMovil = ({ cifras }) => (
   <dl className={`mb-5 grid gap-2 ${cifras.length >= 4 ? 'grid-cols-4' : cifras.length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
     {cifras.map(({ clave, icono: Icono, valor, etiqueta }) => (
       <div key={clave} className={`flex flex-col items-center rounded-[1.1rem] px-1.5 py-3 text-center ${TARJETA_PASTEL}`}>
-        <span className="mb-1.5 flex h-9 w-9 items-center justify-center rounded-full bg-marino text-white">
+        <span className="mb-1.5 flex h-9 w-9 items-center justify-center rounded-full bg-[rgb(var(--c-marino))] text-white">
           <Icono size={17} strokeWidth={2.1} aria-hidden="true" />
         </span>
         <dd className="tabular max-w-full truncate text-headline font-bold text-label">{valor}</dd>
@@ -108,7 +108,7 @@ export const CifrasMovil = ({ cifras }) => (
 );
 
 /** Círculo con la inicial o un icono, como la foto de una ficha. */
-export const AvatarMovil = ({ children, fondo = 'bg-surface text-marino', className = '' }) => (
+export const AvatarMovil = ({ children, fondo = 'bg-surface text-[rgb(var(--c-marino))]', className = '' }) => (
   <span
     className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-subhead font-bold
                 ring-2 ring-white/70 dark:ring-white/10 ${fondo} ${className}`}
@@ -169,7 +169,7 @@ export const TarjetaMovil = ({
             aria-label={etiquetaAbrir}
             whileTap={reduceMotion ? { opacity: 0.6 } : { scale: 0.88 }}
             transition={springSnappy}
-            className="tappable flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-surface text-marino shadow-level-1"
+            className="tappable flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-surface text-[rgb(var(--c-marino))] shadow-level-1"
           >
             <ArrowUpRight size={18} strokeWidth={2.3} />
           </motion.button>
