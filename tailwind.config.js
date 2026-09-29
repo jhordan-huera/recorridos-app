@@ -47,6 +47,12 @@ export default {
         info: withAlpha('--c-teal'),
         brand: withAlpha('--c-indigo'),
         highlight: withAlpha('--c-purple'),
+        // Presentación móvil: tarjetas pastel y botones marino.
+        pastel: {
+          DEFAULT: withAlpha('--c-pastel'),
+          strong: withAlpha('--c-pastel-2'),
+        },
+        marino: withAlpha('--c-marino'),
         // Compatibilidad: `primary-600` etc. siguen resolviendo al acento.
         primary: {
           50: withAlpha('--c-accent-50'),

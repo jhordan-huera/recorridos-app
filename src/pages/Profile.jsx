@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import {
-  CircleUser, AtSign, Shield, KeyRound, ChevronRight, ChevronLeft,
-  Bell, Sun, HelpCircle, LogOut, Lock,
+  CircleUser, AtSign, Shield, KeyRound, ChevronRight, ChevronLeft, ChevronDown,
+  Bell, Sun, HelpCircle, LogOut, Lock, Pencil,
 } from 'lucide-react';
+import { useEsMovil } from '../hooks/useMediaPreference';
+import { BotonCircular, TARJETA_PASTEL } from '../components/movil/Movil';
 import { useAuth } from '../context/AuthContext';
 import { useAlert } from '../context/AlertContext';
 import { useApp } from '../context/AppContext';
@@ -81,6 +83,52 @@ const SettingGroup = ({ title, children }) => (
   </section>
 );
 
+/**
+ * Sección desplegable del perfil en el móvil: una píldora pastel que, al
+ * tocarla, abre debajo su contenido en una tarjeta blanca.
+ */
+const SeccionDesplegable = ({ id, icono: Icono, titulo, abierta, onAlternar, children }) => {
+  const reduceMotion = useReducedMotion();
+  return (
+    <div className={`rounded-[1.5rem] ${TARJETA_PASTEL}`}>
+      <button
+        type="button"
+        onClick={onAlternar}
+        aria-expanded={abierta}
+        aria-controls={`perfil-${id}`}
+        className="tappable flex w-full items-center gap-3 p-2.5 pr-3 text-left"
+      >
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface text-marino shadow-level-1">
+          <Icono size={19} strokeWidth={2.1} />
+        </span>
+        <span className="flex-1 text-subhead font-semibold text-label">{titulo}</span>
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface text-marino">
+          <ChevronDown
+            size={17} strokeWidth={2.4}
+            className={`transition-transform duration-[var(--t-base)] ${abierta ? 'rotate-180' : ''}`}
+          />
+        </span>
+      </button>
+      <AnimatePresence initial={false}>
+        {abierta && (
+          <motion.div
+            id={`perfil-${id}`}
+            initial={reduceMotion ? { opacity: 0 } : { height: 0, opacity: 0 }}
+            animate={reduceMotion ? { opacity: 1 } : { height: 'auto', opacity: 1 }}
+            exit={reduceMotion ? { opacity: 0 } : { height: 0, opacity: 0 }}
+            transition={reduceMotion ? crossFade : { duration: 0.25, ease: [0.32, 0.72, 0, 1] }}
+            className="overflow-hidden"
+          >
+            <div className="px-2.5 pb-2.5">
+              <div className="rounded-[1.2rem] bg-surface p-4">{children}</div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
 const Profile = () => {
   // updateProfile y changePassword salen del contexto: PUT /users/:id es
   // solo para administradores, así que un usuario normal no puede editarse
@@ -93,6 +141,10 @@ const Profile = () => {
   const [loading, setLoading] = useState(false);
   const [section, setSection] = useState('main');
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  // Móvil: qué sección desplegable está abierta (una a la vez).
+  const esMovil = useEsMovil();
+  const [abierta, setAbierta] = useState(null);
+  const alternar = (id) => setAbierta((actual) => (actual === id ? null : id));
 
   const [formData, setFormData] = useState({
     nombre: '', usuario: '', passwordActual: '', password: '', confirmPassword: '',
@@ -136,6 +188,7 @@ const Profile = () => {
       showAlert('success', 'Perfil actualizado');
       setDisplayName(formData.nombre);
       setSection('main');
+      setAbierta(null);
     } else {
       showAlert('error', resultado.error);
     }
@@ -195,6 +248,150 @@ const Profile = () => {
     </div>
   );
 
+  // Los formularios son los mismos en el móvil (dentro de una sección
+  // desplegable) y en escritorio (en su propia subvista).
+  const formularioPersonal = (
+    <form onSubmit={handleSubmitPerfil} className="space-y-4">
+      <Input
+        label="Nombre completo" name="nombre" icon={CircleUser}
+        value={formData.nombre} onChange={handleChange} required
+      />
+      <Input
+        label="Usuario" name="usuario" type="text" icon={AtSign}
+        autoCapitalize="none" spellCheck={false}
+        value={formData.usuario} onChange={handleChange} required minLength={3}
+      />
+      <Button type="submit" loading={loading} className="w-full">
+        Guardar cambios
+      </Button>
+    </form>
+  );
+
+  const formularioSeguridad = (
+    <>
+      <div className="mb-4 flex items-start gap-3 rounded-control border border-caution/25 bg-caution/10 p-3.5">
+        <Lock size={17} strokeWidth={2} className="mt-px shrink-0 text-caution" />
+        <p className="text-footnote leading-relaxed text-label-secondary">
+          Al cambiar la contraseña se cerrarán todas tus sesiones y tendrás que
+          volver a entrar. Usa una que no utilices en otros sitios.
+        </p>
+      </div>
+
+      <form onSubmit={handleSubmitPassword} className="space-y-4">
+        <Input
+          label="Contraseña actual" name="passwordActual" type="password" icon={Lock}
+          autoComplete="current-password"
+          value={formData.passwordActual} onChange={handleChange}
+          placeholder="••••••••" required
+        />
+        <Input
+          label="Nueva contraseña" name="password" type="password" icon={KeyRound}
+          autoComplete="new-password"
+          value={formData.password} onChange={handleChange}
+          placeholder="••••••••" required minLength={8} hint="Mínimo 8 caracteres"
+        />
+        <Input
+          label="Confirmar contraseña" name="confirmPassword" type="password" icon={KeyRound}
+          autoComplete="new-password"
+          value={formData.confirmPassword} onChange={handleChange}
+          placeholder="••••••••" required
+          error={
+            formData.confirmPassword && formData.confirmPassword !== formData.password
+              ? 'Las contraseñas no coinciden'
+              : undefined
+          }
+        />
+        <Button type="submit" loading={loading} className="w-full">
+          Actualizar contraseña
+        </Button>
+      </form>
+    </>
+  );
+
+  if (esMovil) {
+    return (
+      <div className="pb-4">
+        <div className="mb-2 grid grid-cols-[2.75rem_1fr_2.75rem] items-center gap-2">
+          <span aria-hidden="true" />
+          <h1 className="text-center text-title3 font-bold text-label">Mi perfil</h1>
+          <BotonCircular
+            etiqueta="Editar mis datos" icono={Pencil}
+            onClick={() => setAbierta('personal')}
+          />
+        </div>
+
+        <div className="mb-6 flex flex-col items-center text-center">
+          <span className="mb-3 mt-2 flex h-28 w-28 items-center justify-center rounded-full bg-gradient-to-br from-marino to-accent text-[2.75rem] font-bold text-white shadow-level-2 ring-4 ring-surface">
+            {initial}
+          </span>
+          <p className="text-title3 font-bold text-label">{displayName || 'Usuario'}</p>
+          <p className="mt-0.5 text-footnote text-label-secondary">{formData.usuario}</p>
+        </div>
+
+        <div className="space-y-3">
+          <SeccionDesplegable
+            id="personal" icono={CircleUser} titulo="Datos personales"
+            abierta={abierta === 'personal'} onAlternar={() => alternar('personal')}
+          >
+            {formularioPersonal}
+          </SeccionDesplegable>
+          <SeccionDesplegable
+            id="seguridad" icono={KeyRound} titulo="Seguridad y contraseña"
+            abierta={abierta === 'seguridad'} onAlternar={() => alternar('seguridad')}
+          >
+            {formularioSeguridad}
+          </SeccionDesplegable>
+          <SeccionDesplegable
+            id="tema" icono={Sun} titulo="Tema de la app"
+            abierta={abierta === 'tema'} onAlternar={() => alternar('tema')}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-subhead text-label-secondary">
+                {resolvedTheme === 'dark' ? 'Ahora: oscuro' : 'Ahora: claro'}
+              </p>
+              <ThemeToggle />
+            </div>
+          </SeccionDesplegable>
+          <SeccionDesplegable
+            id="ayuda" icono={HelpCircle} titulo="Ayuda"
+            abierta={abierta === 'ayuda'} onAlternar={() => alternar('ayuda')}
+          >
+            <p className="text-subhead leading-relaxed text-label-secondary">
+              Si algo no funciona o necesitas otra cuenta, habla con el administrador de Bitácora.
+              Tus cuentas, permisos y contraseñas los gestiona él.
+            </p>
+          </SeccionDesplegable>
+        </div>
+
+        {/* Cerrar sesión: píldora con el icono en un círculo rojo al final */}
+        <div className="mt-8 flex justify-center">
+          <button
+            type="button"
+            onClick={() => setShowLogoutConfirm(true)}
+            className="tappable flex h-12 items-center gap-4 rounded-full bg-gradient-to-r from-marino to-accent pl-6 pr-1.5 text-subhead font-semibold text-white shadow-level-2"
+          >
+            Cerrar sesión
+            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-critical text-white">
+              <LogOut size={17} strokeWidth={2.3} />
+            </span>
+          </button>
+        </div>
+
+        <p className="mt-6 text-center text-footnote text-label-tertiary">Bitácora v1.2.0</p>
+
+        <ConfirmModal
+          isOpen={showLogoutConfirm}
+          onClose={() => setShowLogoutConfirm(false)}
+          onConfirm={logout}
+          title="Cerrar sesión"
+          message="Tendrás que volver a introducir tus credenciales para entrar."
+          confirmText="Cerrar sesión"
+          type="warning"
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto w-full max-w-2xl pb-4">
       <AnimatePresence mode="wait" initial={false}>
@@ -203,20 +400,7 @@ const Profile = () => {
           <motion.div key="personal" {...subviewMotion}>
             <SubviewHeader title="Datos personales" />
             <Card>
-              <form onSubmit={handleSubmitPerfil} className="space-y-4">
-                <Input
-                  label="Nombre completo" name="nombre" icon={CircleUser}
-                  value={formData.nombre} onChange={handleChange} required
-                />
-                <Input
-                  label="Usuario" name="usuario" type="text" icon={AtSign}
-                  autoCapitalize="none" spellCheck={false}
-                  value={formData.usuario} onChange={handleChange} required minLength={3}
-                />
-                <Button type="submit" loading={loading} className="w-full">
-                  Guardar cambios
-                </Button>
-              </form>
+              {formularioPersonal}
             </Card>
           </motion.div>
         )}
@@ -225,42 +409,7 @@ const Profile = () => {
           <motion.div key="security" {...subviewMotion}>
             <SubviewHeader title="Seguridad" />
             <Card>
-              <div className="mb-4 flex items-start gap-3 rounded-control border border-caution/25 bg-caution/10 p-3.5">
-                <Lock size={17} strokeWidth={2} className="mt-px shrink-0 text-caution" />
-                <p className="text-footnote leading-relaxed text-label-secondary">
-                  Al cambiar la contraseña se cerrarán todas tus sesiones y tendrás que
-                  volver a entrar. Usa una que no utilices en otros sitios.
-                </p>
-              </div>
-
-              <form onSubmit={handleSubmitPassword} className="space-y-4">
-                <Input
-                  label="Contraseña actual" name="passwordActual" type="password" icon={Lock}
-                  autoComplete="current-password"
-                  value={formData.passwordActual} onChange={handleChange}
-                  placeholder="••••••••" required
-                />
-                <Input
-                  label="Nueva contraseña" name="password" type="password" icon={KeyRound}
-                  autoComplete="new-password"
-                  value={formData.password} onChange={handleChange}
-                  placeholder="••••••••" required minLength={8} hint="Mínimo 8 caracteres"
-                />
-                <Input
-                  label="Confirmar contraseña" name="confirmPassword" type="password" icon={KeyRound}
-                  autoComplete="new-password"
-                  value={formData.confirmPassword} onChange={handleChange}
-                  placeholder="••••••••" required
-                  error={
-                    formData.confirmPassword && formData.confirmPassword !== formData.password
-                      ? 'Las contraseñas no coinciden'
-                      : undefined
-                  }
-                />
-                <Button type="submit" loading={loading} className="w-full">
-                  Actualizar contraseña
-                </Button>
-              </form>
+              {formularioSeguridad}
             </Card>
           </motion.div>
         )}

@@ -21,6 +21,10 @@ import StatCard from '../components/ui/StatCard';
 import EmptyState from '../components/ui/EmptyState';
 import SearchField from '../components/ui/SearchField';
 import { crossFade, springSheet } from '../lib/motion';
+import { useEsMovil } from '../hooks/useMediaPreference';
+import {
+  CabeceraMovil, BuscadorMovil, CifrasMovil, TarjetaMovil, AvatarMovil,
+} from '../components/movil/Movil';
 
 const emptyForm = { nombre: '', apellidos: '', direccion: '', telefono_contacto: '' };
 
@@ -28,6 +32,7 @@ const Ninos = () => {
   const { ninos, setNinos } = useApp();
   const { showAlert } = useAlert();
   const reduceMotion = useReducedMotion();
+  const esMovil = useEsMovil();
 
   const [formData, setFormData] = useState(emptyForm);
   const [mostrarModal, setMostrarModal] = useState(false);
@@ -142,136 +147,193 @@ const Ninos = () => {
 
   return (
     <div className="pb-4">
-      <PageHeader
-        title="Estudiantes"
-        subtitle="Alumnos matriculados y sus datos de contacto"
-        actions={
-          <>
-            <SearchField
-              value={searchTerm}
-              onChange={setSearchTerm}
-              placeholder="Buscar estudiante…"
-              className="w-full sm:w-60"
+      {esMovil ? (
+        <>
+          <CabeceraMovil
+            titulo="Estudiantes"
+            accion={{ etiqueta: 'Nuevo estudiante', icono: Plus, onClick: () => { resetForm(); setMostrarModal(true); } }}
+          />
+          <BuscadorMovil valor={searchTerm} onCambiar={setSearchTerm} placeholder="Buscar estudiante" />
+          <CifrasMovil
+            cifras={[
+              { clave: 'total', icono: GraduationCap, valor: loading ? '—' : ninos.length, etiqueta: 'Estudiantes' },
+              { clave: 'telefono', icono: Phone, valor: loading ? '—' : ninos.filter((n) => n.telefono_contacto).length, etiqueta: 'Con teléfono' },
+              { clave: 'direccion', icono: MapPin, valor: loading ? '—' : ninos.filter((n) => n.direccion).length, etiqueta: 'Con dirección' },
+            ]}
+          />
+          {loading ? (
+            <div className="grid grid-cols-2 gap-3">
+              {[...Array(6)].map((_, index) => <CardSkeleton key={index} lineas={2} />)}
+            </div>
+          ) : filteredNinos.length === 0 ? (
+            <EmptyState
+              icon={GraduationCap}
+              title={searchTerm ? 'Sin coincidencias' : 'Todavía no hay estudiantes'}
+              message={searchTerm
+                ? 'Ningún estudiante coincide con esa búsqueda.'
+                : 'Registra al primer estudiante para empezar a asignarlo a recorridos.'}
             />
-            <Button
-              onClick={() => { resetForm(); setMostrarModal(true); }}
-              icon={<Plus size={17} strokeWidth={2.3} />}
-            >
-              Nuevo estudiante
-            </Button>
-          </>
-        }
-      />
-
-      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <StatCard
-          label="Total matriculados"
-          value={loading ? '—' : ninos.length}
-          icon={GraduationCap}
-          tone="brand"
-          footnote="Activos en el ciclo actual"
-        />
-        <StatCard
-          label="Estado del sistema"
-          value="Óptimo"
-          icon={Activity}
-          tone="positive"
-          footnote="Sincronización completada"
-        />
-      </div>
-
-      {loading ? (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {[...Array(8)].map((_, index) => <CardSkeleton key={index} />)}
-        </div>
-      ) : filteredNinos.length === 0 ? (
-        <EmptyState
-          icon={GraduationCap}
-          title={searchTerm ? 'Sin coincidencias' : 'Todavía no hay estudiantes'}
-          message={
-            searchTerm
-              ? 'Ningún estudiante coincide con esa búsqueda.'
-              : 'Registra al primer estudiante para empezar a asignarlo a recorridos.'
-          }
-          action={
-            !searchTerm && (
-              <Button onClick={() => { resetForm(); setMostrarModal(true); }} icon={<Plus size={17} strokeWidth={2.3} />}>
+          ) : (
+            <ul className="grid grid-cols-2 gap-3">
+              {filteredNinos.map((nino) => (
+                <li key={nino.id}>
+                  <TarjetaMovil
+                    avatar={(
+                      <AvatarMovil>
+                        {nino.nombre?.charAt(0)}{nino.apellidos?.charAt(0)}
+                      </AvatarMovil>
+                    )}
+                    titulo={`${nino.nombre} ${nino.apellidos}`}
+                    subtitulo={nino.direccion || 'Sin dirección'}
+                    valor={nino.telefono_contacto || 'Sin teléfono'}
+                    iconoValor={Phone}
+                    claseIconoValor="text-marino"
+                    detalle="Teléfono de contacto"
+                    onAbrir={() => handleEdit(nino)}
+                    etiquetaAbrir={`Editar a ${nino.nombre} ${nino.apellidos}`}
+                    onBorrar={() => { setNinoAEliminar(nino.id); setShowDeleteModal(true); }}
+                    etiquetaBorrar={`Eliminar a ${nino.nombre} ${nino.apellidos}`}
+                  />
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      ) : (
+      <>
+        <PageHeader
+          title="Estudiantes"
+          subtitle="Alumnos matriculados y sus datos de contacto"
+          actions={
+            <>
+              <SearchField
+                value={searchTerm}
+                onChange={setSearchTerm}
+                placeholder="Buscar estudiante…"
+                className="w-full sm:w-60"
+              />
+              <Button
+                onClick={() => { resetForm(); setMostrarModal(true); }}
+                icon={<Plus size={17} strokeWidth={2.3} />}
+              >
                 Nuevo estudiante
               </Button>
-            )
+            </>
           }
         />
-      ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          <AnimatePresence initial={false}>
-            {filteredNinos.map((nino) => (
-              <motion.div
-                key={nino.id}
-                layout
-                initial={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.97 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.97 }}
-                transition={reduceMotion ? crossFade : springSheet}
-              >
-                <Card padding="p-0" className="flex h-full flex-col overflow-hidden">
-                  <div className="flex-1 p-5">
-                    <div className="mb-4 flex items-start justify-between gap-3">
-                      <span className="flex h-11 w-11 items-center justify-center rounded-field bg-brand/14 text-subhead font-semibold text-brand">
-                        {nino.nombre?.charAt(0)}{nino.apellidos?.charAt(0)}
-                      </span>
-                      <Badge tone="positive">Activo</Badge>
+
+        <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <StatCard
+            label="Total matriculados"
+            value={loading ? '—' : ninos.length}
+            icon={GraduationCap}
+            tone="brand"
+            footnote="Activos en el ciclo actual"
+          />
+          <StatCard
+            label="Estado del sistema"
+            value="Óptimo"
+            icon={Activity}
+            tone="positive"
+            footnote="Sincronización completada"
+          />
+        </div>
+
+        {loading ? (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {[...Array(8)].map((_, index) => <CardSkeleton key={index} />)}
+          </div>
+        ) : filteredNinos.length === 0 ? (
+          <EmptyState
+            icon={GraduationCap}
+            title={searchTerm ? 'Sin coincidencias' : 'Todavía no hay estudiantes'}
+            message={
+              searchTerm
+                ? 'Ningún estudiante coincide con esa búsqueda.'
+                : 'Registra al primer estudiante para empezar a asignarlo a recorridos.'
+            }
+            action={
+              !searchTerm && (
+                <Button onClick={() => { resetForm(); setMostrarModal(true); }} icon={<Plus size={17} strokeWidth={2.3} />}>
+                  Nuevo estudiante
+                </Button>
+              )
+            }
+          />
+        ) : (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            <AnimatePresence initial={false}>
+              {filteredNinos.map((nino) => (
+                <motion.div
+                  key={nino.id}
+                  layout
+                  initial={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.97 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.97 }}
+                  transition={reduceMotion ? crossFade : springSheet}
+                >
+                  <Card padding="p-0" className="flex h-full flex-col overflow-hidden">
+                    <div className="flex-1 p-5">
+                      <div className="mb-4 flex items-start justify-between gap-3">
+                        <span className="flex h-11 w-11 items-center justify-center rounded-field bg-brand/14 text-subhead font-semibold text-brand">
+                          {nino.nombre?.charAt(0)}{nino.apellidos?.charAt(0)}
+                        </span>
+                        <Badge tone="positive">Activo</Badge>
+                      </div>
+
+                      <h3
+                        className="truncate text-headline font-semibold text-label"
+                        title={`${nino.nombre} ${nino.apellidos}`}
+                      >
+                        {nino.nombre} {nino.apellidos}
+                      </h3>
+
+                      <dl className="mt-3 space-y-2">
+                        <div className="flex items-start gap-2">
+                          <dt className="mt-0.5 shrink-0 text-label-tertiary"><Phone size={14} strokeWidth={2} /></dt>
+                          <dd className="text-footnote text-label-secondary">
+                            {nino.telefono_contacto || 'Sin teléfono'}
+                          </dd>
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <dt className="mt-0.5 shrink-0 text-label-tertiary"><MapPin size={14} strokeWidth={2} /></dt>
+                          <dd className="line-clamp-2 text-footnote leading-relaxed text-label-secondary">
+                            {nino.direccion || 'Sin dirección registrada'}
+                          </dd>
+                        </div>
+                      </dl>
                     </div>
 
-                    <h3
-                      className="truncate text-headline font-semibold text-label"
-                      title={`${nino.nombre} ${nino.apellidos}`}
-                    >
-                      {nino.nombre} {nino.apellidos}
-                    </h3>
+                    {/* Las acciones están siempre visibles. Esconderlas tras un
+                        hover las deja inalcanzables con el dedo. */}
+                    <div className="flex items-center gap-2 border-t border-separator/60 bg-surface-secondary px-4 py-3">
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        className="flex-1"
+                        onClick={() => handleEdit(nino)}
+                        icon={<Pencil size={14} strokeWidth={2.1} />}
+                      >
+                        Editar
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        aria-label={`Eliminar a ${nino.nombre} ${nino.apellidos}`}
+                        className="px-2.5 text-label-secondary hover:bg-critical/14 hover:text-critical"
+                        onClick={() => { setNinoAEliminar(nino.id); setShowDeleteModal(true); }}
+                      >
+                        <Trash2 size={16} strokeWidth={2} />
+                      </Button>
+                    </div>
+                  </Card>
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          </div>
+        )}
 
-                    <dl className="mt-3 space-y-2">
-                      <div className="flex items-start gap-2">
-                        <dt className="mt-0.5 shrink-0 text-label-tertiary"><Phone size={14} strokeWidth={2} /></dt>
-                        <dd className="text-footnote text-label-secondary">
-                          {nino.telefono_contacto || 'Sin teléfono'}
-                        </dd>
-                      </div>
-                      <div className="flex items-start gap-2">
-                        <dt className="mt-0.5 shrink-0 text-label-tertiary"><MapPin size={14} strokeWidth={2} /></dt>
-                        <dd className="line-clamp-2 text-footnote leading-relaxed text-label-secondary">
-                          {nino.direccion || 'Sin dirección registrada'}
-                        </dd>
-                      </div>
-                    </dl>
-                  </div>
-
-                  {/* Las acciones están siempre visibles. Esconderlas tras un
-                      hover las deja inalcanzables con el dedo. */}
-                  <div className="flex items-center gap-2 border-t border-separator/60 bg-surface-secondary px-4 py-3">
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      className="flex-1"
-                      onClick={() => handleEdit(nino)}
-                      icon={<Pencil size={14} strokeWidth={2.1} />}
-                    >
-                      Editar
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      aria-label={`Eliminar a ${nino.nombre} ${nino.apellidos}`}
-                      className="px-2.5 text-label-secondary hover:bg-critical/14 hover:text-critical"
-                      onClick={() => { setNinoAEliminar(nino.id); setShowDeleteModal(true); }}
-                    >
-                      <Trash2 size={16} strokeWidth={2} />
-                    </Button>
-                  </div>
-                </Card>
-              </motion.div>
-            ))}
-          </AnimatePresence>
-        </div>
+      </>
       )}
 
       <ConfirmModal

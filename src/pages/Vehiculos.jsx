@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { Plus, Bus, Zap, Pencil, Trash2, Car, Building2, FileText, CarTaxiFront, HandCoins } from 'lucide-react';
+import { Plus, Bus, Zap, Pencil, Trash2, Car, Building2, FileText, CarTaxiFront, HandCoins, Users } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useAlert } from '../context/AlertContext';
 import {
@@ -21,6 +21,10 @@ import StatCard from '../components/ui/StatCard';
 import EmptyState from '../components/ui/EmptyState';
 import SearchField from '../components/ui/SearchField';
 import { crossFade, springSheet } from '../lib/motion';
+import { useEsMovil } from '../hooks/useMediaPreference';
+import {
+  CabeceraMovil, BuscadorMovil, CifrasMovil, TarjetaMovil, AvatarMovil, InsigniaMovil,
+} from '../components/movil/Movil';
 
 const emptyForm = {
   tipo: 'propio', descripcion: '', placa: '', capacidad: '', costo_por_recorrido: '',
@@ -54,6 +58,7 @@ const Vehiculos = () => {
   const { vehiculos, setVehiculos } = useApp();
   const { showAlert } = useAlert();
   const reduceMotion = useReducedMotion();
+  const esMovil = useEsMovil();
 
   const [formData, setFormData] = useState(emptyForm);
   const [mostrarModal, setMostrarModal] = useState(false);
@@ -207,150 +212,215 @@ const Vehiculos = () => {
 
   return (
     <div className="pb-4">
-      <PageHeader
-        title="Vehículos"
-        subtitle="Flota disponible y costo por recorrido"
-        actions={
-          <>
-            <SearchField
-              value={searchTerm}
-              onChange={setSearchTerm}
-              placeholder="Buscar vehículo…"
-              className="w-full sm:w-60"
+      {esMovil ? (
+        <>
+          <CabeceraMovil
+            titulo="Vehículos"
+            accion={{ etiqueta: 'Nuevo vehículo', icono: Plus, onClick: () => { resetForm(); setMostrarModal(true); } }}
+          />
+          <BuscadorMovil valor={searchTerm} onCambiar={setSearchTerm} placeholder="Buscar por nombre o placa" />
+          <CifrasMovil
+            cifras={[
+              { clave: 'unidades', icono: Bus, valor: loading ? '—' : vehiculos.length, etiqueta: 'Unidades' },
+              { clave: 'plazas', icono: Users, valor: loading ? '—' : vehiculos.reduce((t, v) => t + (Number(v.capacidad) || 0), 0), etiqueta: 'Plazas' },
+              repartoDisponible
+                ? { clave: 'cobra', icono: HandCoins, valor: loading ? '—' : vehiculos.filter((v) => v.auto_cobra).length, etiqueta: 'El auto cobra' }
+                : null,
+            ].filter(Boolean)}
+          />
+          {loading ? (
+            <div className="grid grid-cols-2 gap-3">
+              {[...Array(4)].map((_, index) => <CardSkeleton key={index} lineas={3} />)}
+            </div>
+          ) : filteredVehiculos.length === 0 ? (
+            <EmptyState
+              icon={Bus}
+              title={searchTerm ? 'Sin coincidencias' : 'Todavía no hay vehículos'}
+              message={searchTerm
+                ? 'Ningún vehículo coincide con esa búsqueda.'
+                : 'Registra el primer transporte para poder asignarlo a un recorrido.'}
             />
-            <Button
-              onClick={() => { resetForm(); setMostrarModal(true); }}
-              icon={<Plus size={17} strokeWidth={2.3} />}
-            >
-              Nuevo vehículo
-            </Button>
-          </>
-        }
-      />
-
-      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <StatCard
-          label="Unidades en flota"
-          value={loading ? '—' : vehiculos.length}
-          icon={Bus}
-          tone="caution"
-          footnote="Disponibles para asignar"
-        />
-        <StatCard
-          label="Operatividad"
-          value="100%"
-          icon={Zap}
-          tone="positive"
-          footnote="Todas las unidades en servicio"
-        />
-      </div>
-
-      {loading ? (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {[...Array(8)].map((_, index) => <CardSkeleton key={index} lineas={3} />)}
-        </div>
-      ) : filteredVehiculos.length === 0 ? (
-        <EmptyState
-          icon={Bus}
-          title={searchTerm ? 'Sin coincidencias' : 'Todavía no hay vehículos'}
-          message={
-            searchTerm
-              ? 'Ningún vehículo coincide con esa búsqueda.'
-              : 'Registra el primer transporte para poder asignarlo a un recorrido.'
-          }
-          action={
-            !searchTerm && (
-              <Button onClick={() => { resetForm(); setMostrarModal(true); }} icon={<Plus size={17} strokeWidth={2.3} />}>
+          ) : (
+            <ul className="grid grid-cols-2 gap-3">
+              {filteredVehiculos.map((vehiculo) => {
+                const { label, Icon } = getTipo(vehiculo.tipo);
+                const { auto, chofer } = repartoDe(vehiculo);
+                return (
+                  <li key={vehiculo.id}>
+                    <TarjetaMovil
+                      destacada={repartoDisponible && vehiculo.auto_cobra}
+                      avatar={<AvatarMovil><Icon size={18} strokeWidth={2} /></AvatarMovil>}
+                      titulo={vehiculo.descripcion}
+                      subtitulo={vehiculo.placa || 'Sin placa'}
+                      insignia={(
+                        <InsigniaMovil>
+                          {String(label).charAt(0).toUpperCase() + String(label).slice(1)} · {vehiculo.capacidad || 0} plazas
+                        </InsigniaMovil>
+                      )}
+                      valor={dinero.format(parseFloat(vehiculo.costo_por_recorrido || 0))}
+                      detalle={repartoDisponible && vehiculo.auto_cobra
+                        ? `Auto ${dinero.format(auto)} · Chofer ${dinero.format(chofer)}`
+                        : 'Por recorrido'}
+                      onAbrir={() => handleEdit(vehiculo)}
+                      etiquetaAbrir={`Editar ${vehiculo.descripcion}`}
+                      onBorrar={() => { setVehiculoAEliminar(vehiculo.id); setShowDeleteModal(true); }}
+                      etiquetaBorrar={`Eliminar ${vehiculo.descripcion}`}
+                    />
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </>
+      ) : (
+      <>
+        <PageHeader
+          title="Vehículos"
+          subtitle="Flota disponible y costo por recorrido"
+          actions={
+            <>
+              <SearchField
+                value={searchTerm}
+                onChange={setSearchTerm}
+                placeholder="Buscar vehículo…"
+                className="w-full sm:w-60"
+              />
+              <Button
+                onClick={() => { resetForm(); setMostrarModal(true); }}
+                icon={<Plus size={17} strokeWidth={2.3} />}
+              >
                 Nuevo vehículo
               </Button>
-            )
+            </>
           }
         />
-      ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          <AnimatePresence initial={false}>
-            {filteredVehiculos.map((vehiculo) => {
-              const { label, Icon, tone } = getTipo(vehiculo.tipo);
-              return (
-                <motion.div
-                  key={vehiculo.id}
-                  layout
-                  initial={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.97 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.97 }}
-                  transition={reduceMotion ? crossFade : springSheet}
-                >
-                  <Card padding="p-0" className="flex h-full flex-col overflow-hidden">
-                    <div className="flex-1 p-5">
-                      <div className="mb-4 flex items-start justify-between gap-3">
-                        <span className="flex h-11 w-11 items-center justify-center rounded-field bg-fill/10 text-label-secondary">
-                          <Icon size={20} strokeWidth={1.9} />
-                        </span>
-                        <Badge tone={tone}>{label}</Badge>
+
+        <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <StatCard
+            label="Unidades en flota"
+            value={loading ? '—' : vehiculos.length}
+            icon={Bus}
+            tone="caution"
+            footnote="Disponibles para asignar"
+          />
+          <StatCard
+            label="Operatividad"
+            value="100%"
+            icon={Zap}
+            tone="positive"
+            footnote="Todas las unidades en servicio"
+          />
+        </div>
+
+        {loading ? (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {[...Array(8)].map((_, index) => <CardSkeleton key={index} lineas={3} />)}
+          </div>
+        ) : filteredVehiculos.length === 0 ? (
+          <EmptyState
+            icon={Bus}
+            title={searchTerm ? 'Sin coincidencias' : 'Todavía no hay vehículos'}
+            message={
+              searchTerm
+                ? 'Ningún vehículo coincide con esa búsqueda.'
+                : 'Registra el primer transporte para poder asignarlo a un recorrido.'
+            }
+            action={
+              !searchTerm && (
+                <Button onClick={() => { resetForm(); setMostrarModal(true); }} icon={<Plus size={17} strokeWidth={2.3} />}>
+                  Nuevo vehículo
+                </Button>
+              )
+            }
+          />
+        ) : (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            <AnimatePresence initial={false}>
+              {filteredVehiculos.map((vehiculo) => {
+                const { label, Icon, tone } = getTipo(vehiculo.tipo);
+                return (
+                  <motion.div
+                    key={vehiculo.id}
+                    layout
+                    initial={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.97 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.97 }}
+                    transition={reduceMotion ? crossFade : springSheet}
+                  >
+                    <Card padding="p-0" className="flex h-full flex-col overflow-hidden">
+                      <div className="flex-1 p-5">
+                        <div className="mb-4 flex items-start justify-between gap-3">
+                          <span className="flex h-11 w-11 items-center justify-center rounded-field bg-fill/10 text-label-secondary">
+                            <Icon size={20} strokeWidth={1.9} />
+                          </span>
+                          <Badge tone={tone}>{label}</Badge>
+                        </div>
+
+                        <h3 className="truncate text-headline font-semibold text-label" title={vehiculo.descripcion}>
+                          {vehiculo.descripcion}
+                        </h3>
+                        <p className="tabular mt-0.5 text-footnote text-label-tertiary">
+                          {vehiculo.placa || 'Sin placa'}
+                        </p>
+
+                        <dl className="mt-4 grid grid-cols-2 gap-3 border-t border-separator/50 pt-4">
+                          <div>
+                            <dt className="text-caption text-label-tertiary">Capacidad</dt>
+                            <dd className="tabular mt-0.5 text-subhead font-medium text-label">
+                              {vehiculo.capacidad || 0} pasajeros
+                            </dd>
+                          </div>
+                          <div>
+                            <dt className="text-caption text-label-tertiary">Costo por recorrido</dt>
+                            <dd className="tabular mt-0.5 text-subhead font-semibold text-positive">
+                              ${parseFloat(vehiculo.costo_por_recorrido || 0).toFixed(2)}
+                            </dd>
+                          </div>
+                          {repartoDisponible && (
+                          <div className="col-span-2">
+                            <dt className="text-caption text-label-tertiary">Reparto por recorrido</dt>
+                            <dd className="tabular mt-0.5 text-subhead font-medium text-label">
+                              {(() => {
+                                const { auto, chofer } = repartoDe(vehiculo);
+                                return vehiculo.auto_cobra
+                                  ? `Auto ${dinero.format(auto)} · Chofer ${dinero.format(chofer)}`
+                                  : 'Todo para el chofer';
+                              })()}
+                            </dd>
+                          </div>
+                          )}
+                        </dl>
                       </div>
 
-                      <h3 className="truncate text-headline font-semibold text-label" title={vehiculo.descripcion}>
-                        {vehiculo.descripcion}
-                      </h3>
-                      <p className="tabular mt-0.5 text-footnote text-label-tertiary">
-                        {vehiculo.placa || 'Sin placa'}
-                      </p>
+                      <div className="flex items-center gap-2 border-t border-separator/60 bg-surface-secondary px-4 py-3">
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          className="flex-1"
+                          onClick={() => handleEdit(vehiculo)}
+                          icon={<Pencil size={14} strokeWidth={2.1} />}
+                        >
+                          Editar
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          aria-label={`Eliminar ${vehiculo.descripcion}`}
+                          className="px-2.5 text-label-secondary hover:bg-critical/14 hover:text-critical"
+                          onClick={() => { setVehiculoAEliminar(vehiculo.id); setShowDeleteModal(true); }}
+                        >
+                          <Trash2 size={16} strokeWidth={2} />
+                        </Button>
+                      </div>
+                    </Card>
+                  </motion.div>
+                );
+              })}
+            </AnimatePresence>
+          </div>
+        )}
 
-                      <dl className="mt-4 grid grid-cols-2 gap-3 border-t border-separator/50 pt-4">
-                        <div>
-                          <dt className="text-caption text-label-tertiary">Capacidad</dt>
-                          <dd className="tabular mt-0.5 text-subhead font-medium text-label">
-                            {vehiculo.capacidad || 0} pasajeros
-                          </dd>
-                        </div>
-                        <div>
-                          <dt className="text-caption text-label-tertiary">Costo por recorrido</dt>
-                          <dd className="tabular mt-0.5 text-subhead font-semibold text-positive">
-                            ${parseFloat(vehiculo.costo_por_recorrido || 0).toFixed(2)}
-                          </dd>
-                        </div>
-                        {repartoDisponible && (
-                        <div className="col-span-2">
-                          <dt className="text-caption text-label-tertiary">Reparto por recorrido</dt>
-                          <dd className="tabular mt-0.5 text-subhead font-medium text-label">
-                            {(() => {
-                              const { auto, chofer } = repartoDe(vehiculo);
-                              return vehiculo.auto_cobra
-                                ? `Auto ${dinero.format(auto)} · Chofer ${dinero.format(chofer)}`
-                                : 'Todo para el chofer';
-                            })()}
-                          </dd>
-                        </div>
-                        )}
-                      </dl>
-                    </div>
-
-                    <div className="flex items-center gap-2 border-t border-separator/60 bg-surface-secondary px-4 py-3">
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        className="flex-1"
-                        onClick={() => handleEdit(vehiculo)}
-                        icon={<Pencil size={14} strokeWidth={2.1} />}
-                      >
-                        Editar
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        aria-label={`Eliminar ${vehiculo.descripcion}`}
-                        className="px-2.5 text-label-secondary hover:bg-critical/14 hover:text-critical"
-                        onClick={() => { setVehiculoAEliminar(vehiculo.id); setShowDeleteModal(true); }}
-                      >
-                        <Trash2 size={16} strokeWidth={2} />
-                      </Button>
-                    </div>
-                  </Card>
-                </motion.div>
-              );
-            })}
-          </AnimatePresence>
-        </div>
+      </>
       )}
 
       <ConfirmModal

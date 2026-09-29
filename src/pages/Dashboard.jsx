@@ -42,6 +42,9 @@ import Portada from '../components/resumen/Portada';
 import RegistroRapido from '../components/resumen/RegistroRapido';
 import AccesosRapidos from '../components/resumen/AccesosRapidos';
 import UltimosRegistros from '../components/resumen/UltimosRegistros';
+import ResumenMovil from '../components/movil/ResumenMovil';
+import RiegoModal from '../components/RiegoModal';
+import { useEsMovil } from '../hooks/useMediaPreference';
 import { MESES as nombresMeses, rangoDelMes, diaDeFecha, dosDigitos, hoyISO, horaActual } from '../lib/fechas';
 import { haptics } from '../lib/motion';
 
@@ -242,6 +245,9 @@ const Dashboard = () => {
   const { pendientes, registrar, borrar } = usePendientes();
   const { resolvedTheme } = useApp();
   const reduceMotion = useReducedMotion();
+  // En el móvil la cabecera del Resumen tiene su propia presentación.
+  const esMovil = useEsMovil();
+  const [modalRiego, setModalRiego] = useState(false);
   const colors = PALETA_GRAFICO[resolvedTheme] || PALETA_GRAFICO.light;
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -1016,6 +1022,14 @@ const Dashboard = () => {
     : puedeRecorridos ? exportarPDF : exportarRiegosPDF;
   const mesCerradoOCobrado = ['terminado', 'cobrado'].includes(cierreDelMes?.estado);
 
+  /** En qué punto está el mes, en una línea, para la tarjeta del móvil. */
+  let estadoDelMes;
+  if (sinCifras) estadoDelMes = 'Sin conexión: sin datos guardados';
+  else if (esMesFuturo) estadoDelMes = 'Aún no empieza';
+  else if (cierreDelMes?.estado === 'cobrado') estadoDelMes = `Cobrado: ${dinero.format(Number(cierreDelMes.total_cobrado))}`;
+  else if (cierreDelMes?.estado === 'terminado') estadoDelMes = 'Terminado, pendiente de cobro';
+  else estadoDelMes = esMesActual ? 'En curso' : 'Sigue abierto: termínalo para cobrar';
+
   const accesos = [
     {
       clave: 'pdf', etiqueta: 'PDF del mes', icono: FileDown, onClick: exportarDelMes,
@@ -1030,41 +1044,72 @@ const Dashboard = () => {
 
   return (
     <div className="pb-4">
-      {/* ── Portada ─────────────────────────────────────────────────────────
-          El paisaje con el saludo y el mes; encima de su borde, la tarjeta
-          para registrar y, al lado o debajo, los accesos rápidos. */}
-      <Portada
-        nombre={nombreCorto}
-        inicial={inicial}
-        resumen={resumenPortada}
-        detalle={detallePortada}
-        mes={mesActual}
-        anio={anioActual}
-        onCambiarMes={cambiarMes}
-      />
+      {esMovil ? (
+        <ResumenMovil
+          nombre={String(user?.nombre || user?.usuario || '').trim() || 'Bienvenido'}
+          inicial={inicial}
+          mes={mesActual}
+          anio={anioActual}
+          onCambiarMes={cambiarMes}
+          estadoDelMes={estadoDelMes}
+          total={dinero.format(gastoTotalMes)}
+          datos={[
+            puedeRecorridos && { icono: RouteIcon, etiqueta: 'Recorridos', valor: totalRecorridosMes },
+            puedeRiegos && { icono: Droplets, etiqueta: 'Riegos', valor: totalRiegosMes },
+          ].filter(Boolean)}
+          cargando={cargando || sinCifras}
+          accionMes={mesCerradoOCobrado
+            ? { etiqueta: 'Reabrir', reabrir: true, onClick: () => setAccionMes('reabrir'), deshabilitado: ocupadoMes }
+            : { etiqueta: 'Terminar mes', onClick: pedirTerminarMes, deshabilitado: ocupadoMes || esMesFuturo }}
+          onPdf={exportarDelMes}
+          pdfDeshabilitado={cargando || registrosDelMes === 0}
+          onNuevoRecorrido={puedeRecorridos ? () => handleOpenModal() : null}
+          onNuevoRiego={puedeRiegos ? () => setModalRiego(true) : null}
+          onCalendario={() => irA('cronograma')}
+          onGraficas={() => irA('graficas')}
+          ultimos={ultimosDelMes}
+        />
+      ) : (
+      <>
+        {/* ── Portada ─────────────────────────────────────────────────────────
+            El paisaje con el saludo y el mes; encima de su borde, la tarjeta
+            para registrar y, al lado o debajo, los accesos rápidos. */}
+        <Portada
+          nombre={nombreCorto}
+          inicial={inicial}
+          resumen={resumenPortada}
+          detalle={detallePortada}
+          mes={mesActual}
+          anio={anioActual}
+          onCambiarMes={cambiarMes}
+        />
 
-      <div className="relative z-10 -mt-14 mb-6 md:px-6 lg:flex lg:items-end lg:gap-8 xl:px-10">
-        {(puedeRecorridos || puedeRiegos) && (
-          <RegistroRapido
-            className="lg:w-[34rem] lg:shrink-0 xl:w-[38rem]"
-            puedeRecorridos={puedeRecorridos}
-            puedeRiegos={puedeRiegos}
-            vehiculos={vehiculos}
-            vehiculoSugerido={vehiculoSugerido}
-            onRecorrido={handleOpenModal}
-            onRiego={registrarRiegoRapido}
-          />
-        )}
-        <AccesosRapidos accesos={accesos} className="mt-5 lg:mt-0 lg:flex-1 lg:pb-2" />
-      </div>
+        <div className="relative z-10 -mt-14 mb-6 md:px-6 lg:flex lg:items-end lg:gap-8 xl:px-10">
+          {(puedeRecorridos || puedeRiegos) && (
+            <RegistroRapido
+              className="lg:w-[34rem] lg:shrink-0 xl:w-[38rem]"
+              puedeRecorridos={puedeRecorridos}
+              puedeRiegos={puedeRiegos}
+              vehiculos={vehiculos}
+              vehiculoSugerido={vehiculoSugerido}
+              onRecorrido={handleOpenModal}
+              onRiego={registrarRiegoRapido}
+            />
+          )}
+          <AccesosRapidos accesos={accesos} className="mt-5 lg:mt-0 lg:flex-1 lg:pb-2" />
+        </div>
 
-      <UltimosRegistros
-        registros={ultimosDelMes}
-        nombreMes={nombreMes}
-        onVerTodo={() => irA('cronograma')}
-      />
+        <UltimosRegistros
+          registros={ultimosDelMes}
+          nombreMes={nombreMes}
+          onVerTodo={() => irA('cronograma')}
+        />
+      </>
+      )}
 
-      {/* ── En qué punto está el mes ─────────────────────────────────────────── */}
+      {/* ── En qué punto está el mes ─────────────────────────────────────────
+          En el móvil lo dice la tarjeta del mes, arriba. */}
+      {!esMovil && (
       <EstadoDelMes
         nombreMes={`${nombresMeses[mesActual - 1].toLowerCase()} de ${anioActual}`}
         cierre={cierreDelMes}
@@ -1075,6 +1120,7 @@ const Dashboard = () => {
         onTerminar={pedirTerminarMes}
         onReabrir={() => setAccionMes('reabrir')}
       />
+      )}
 
       {/* Sin conexión y sin copia: se dice, en vez de pintar ceros. */}
       {sinCifras && !cargando && (
@@ -1624,6 +1670,12 @@ const Dashboard = () => {
           : cierreDelMes?.estado === 'cobrado'
             ? `Este mes ya está cobrado (${dinero.format(Number(cierreDelMes.total_cobrado))}). Si lo reabres y cambias algo, lo registrado dejará de coincidir con lo cobrado, y el administrador lo verá.`
             : 'Volverás a poder modificarlo. Mientras esté abierto no se puede cobrar.'}
+      />
+
+      <RiegoModal
+        abierto={modalRiego}
+        onCerrar={() => setModalRiego(false)}
+        onGuardado={() => { riegosSinEsqueleto.current = true; setRefrescoRiegos((n) => n + 1); }}
       />
     </div>
   );

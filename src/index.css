@@ -49,6 +49,12 @@
   --c-indigo: 88 86 214;
   --c-purple: 140 70 200;
 
+  /* Presentación móvil (ver el bloque @media de abajo): tarjetas en azul
+     pastel y botones en azul marino, todo de la familia del acento. */
+  --c-pastel: 204 222 248;
+  --c-pastel-2: 181 206 244;
+  --c-marino: 16 44 99;
+
   /* Materiales translúcidos: fondo + desenfoque.
      El peso del material codifica jerarquía — los más pesados separan
      regiones estructurales, los ligeros destacan elementos interactivos. */
@@ -107,6 +113,10 @@
   --c-indigo: 94 92 230;
   --c-purple: 191 90 242;
 
+  --c-pastel: 26 38 60;
+  --c-pastel-2: 36 54 88;
+  --c-marino: 10 132 255;
+
   --material-thin: 30 30 32 / 0.62;
   --material-regular: 30 30 32 / 0.76;
   --material-thick: 24 24 26 / 0.92;
@@ -117,6 +127,15 @@
   --shadow-2: 0 2px 8px -1px rgb(0 0 0 / 0.5), 0 0 0 0.5px rgb(255 255 255 / 0.07);
   --shadow-3: 0 12px 28px -8px rgb(0 0 0 / 0.6), 0 0 0 0.5px rgb(255 255 255 / 0.08);
   --shadow-4: 0 28px 64px -16px rgb(0 0 0 / 0.7), 0 0 0 0.5px rgb(255 255 255 / 0.1);
+}
+
+/* En el móvil (menos de 768 px) el fondo claro pasa a azul muy suave, sobre
+   el que se leen las tarjetas blancas y pastel. En escritorio y tableta no
+   cambia nada. El modo oscuro se queda como está. */
+@media (max-width: 767.98px) {
+  :root:not(.dark) {
+    --c-canvas: 234 241 252;
+  }
 }
 
 /* ==========================================================================
