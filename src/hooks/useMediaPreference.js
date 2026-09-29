@@ -36,6 +36,15 @@ export function useHighContrast() {
   return useMediaQuery('(prefers-contrast: more)');
 }
 
+/**
+ * Pantalla de móvil: por debajo de 768 px, donde no hay cabecera y la app
+ * cambia a su presentación de móvil. Tableta y escritorio quedan fuera.
+ */
+export const CONSULTA_MOVIL = '(max-width: 767.98px)';
+export function useEsMovil() {
+  return useMediaQuery(CONSULTA_MOVIL);
+}
+
 /** El puntero es grueso (dedo) en lugar de fino (ratón). */
 export function useCoarsePointer() {
   return useMediaQuery('(pointer: coarse)');

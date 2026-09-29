@@ -2,8 +2,8 @@ import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { useReducedMotion } from 'motion/react';
 import {
   Users, Route as RouteIcon, Calendar as CalendarIcon,
-  ChevronRight, Clock, Trash2, Plus, Droplets, FileDown,
-  TrendingUp, HandCoins, Wallet, CalendarCheck, PieChart, BarChart3, CloudOff,
+  ChevronRight, Clock, Trash2, Droplets, FileDown,
+  TrendingUp, HandCoins, Wallet, CalendarCheck, PieChart, BarChart3, CloudOff, Lock, LockOpen,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAlert } from '../context/AlertContext';
@@ -31,7 +31,6 @@ import Select from '../components/ui/Select';
 import Badge from '../components/ui/Badge';
 import Skeleton from '../components/ui/Skeleton';
 import CalendarioMes from '../components/ui/CalendarioMes';
-import RiegoModal from '../components/RiegoModal';
 import Kpi from '../components/resumen/Kpi';
 import Aviso from '../components/resumen/Aviso';
 import TarjetaVehiculo from '../components/resumen/TarjetaVehiculo';
@@ -39,7 +38,13 @@ import GraficoMeses from '../components/resumen/GraficoMeses';
 import BurbujasTipos from '../components/resumen/BurbujasTipos';
 import { PALETA_GRAFICO } from '../components/resumen/paleta';
 import EstadoDelMes from '../components/resumen/EstadoDelMes';
-import SelectorDeMes from '../components/ui/SelectorDeMes';
+import Portada from '../components/resumen/Portada';
+import RegistroRapido from '../components/resumen/RegistroRapido';
+import AccesosRapidos from '../components/resumen/AccesosRapidos';
+import UltimosRegistros from '../components/resumen/UltimosRegistros';
+import ResumenMovil from '../components/movil/ResumenMovil';
+import RiegoModal from '../components/RiegoModal';
+import { useEsMovil } from '../hooks/useMediaPreference';
 import { MESES as nombresMeses, rangoDelMes, diaDeFecha, dosDigitos, hoyISO, horaActual } from '../lib/fechas';
 import { haptics } from '../lib/motion';
 
@@ -112,7 +117,6 @@ const tendenciaDeGasto = (variacion, mesAnterior) => {
   };
 };
 
-const fechaDeHoy = new Intl.DateTimeFormat('es-EC', { day: 'numeric', month: 'short', year: 'numeric' });
 
 /** Rango que cubre el histórico completo, para pedirlo en una sola llamada. */
 const rangoDelHistorial = (mes, anio) => {
@@ -241,6 +245,9 @@ const Dashboard = () => {
   const { pendientes, registrar, borrar } = usePendientes();
   const { resolvedTheme } = useApp();
   const reduceMotion = useReducedMotion();
+  // En el móvil la cabecera del Resumen tiene su propia presentación.
+  const esMovil = useEsMovil();
+  const [modalRiego, setModalRiego] = useState(false);
   const colors = PALETA_GRAFICO[resolvedTheme] || PALETA_GRAFICO.light;
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -262,7 +269,6 @@ const Dashboard = () => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [recorridoAEliminar, setRecorridoAEliminar] = useState(null);
   const [loadingRiegos, setLoadingRiegos] = useState(true);
-  const [modalRiego, setModalRiego] = useState(false);
   // Los meses que este usuario ha terminado. Es una lista corta: se pide
   // entera una vez y se vuelve a pedir tras terminar o reabrir.
   const [cierres, setCierres] = useState([]);
@@ -590,8 +596,14 @@ const Dashboard = () => {
     setRecorridoId(null);
   };
 
-  const handleOpenModal = async () => {
+  /**
+   * Abre el formulario de recorrido. Con `datos` (vehículo, tipo, fecha y
+   * hora, desde el registro rápido) llega ya relleno y solo faltan los
+   * estudiantes.
+   */
+  const handleOpenModal = async (datos = null) => {
     resetForm();
+    if (datos) setFormData((actual) => ({ ...actual, ...datos }));
     setLoadingForm(true);
     setIsModalOpen(true);
     try {
@@ -941,71 +953,163 @@ const Dashboard = () => {
     behavior: reduceMotion ? 'auto' : 'smooth', block: 'start',
   });
 
+  /* ── Portada y registro rápido ──────────────────────────────────────────── */
+  const nombreCorto = String(user?.nombre || user?.usuario || '').trim().split(/\s+/)[0] || 'de nuevo';
+  const inicial = nombreCorto.charAt(0).toUpperCase() || 'B';
+
+  const partesDelMes = [
+    puedeRecorridos && `${totalRecorridosMes} ${totalRecorridosMes === 1 ? 'recorrido' : 'recorridos'}`,
+    puedeRiegos && `${totalRiegosMes} ${totalRiegosMes === 1 ? 'riego' : 'riegos'}`,
+  ].filter(Boolean);
+  let resumenPortada;
+  if (cargando) resumenPortada = 'Preparando tu mes…';
+  else if (sinCifras) resumenPortada = 'Sin conexión: no hay datos guardados de este mes en el teléfono.';
+  else if (esMesActual) resumenPortada = `En ${nombreMes} llevas ${dinero.format(gastoTotalMes)}.`;
+  else if (esMesFuturo) resumenPortada = `${nombreMes.charAt(0).toUpperCase()}${nombreMes.slice(1)} aún no empieza.`;
+  else resumenPortada = `En ${nombreMes} de ${anioActual} fueron ${dinero.format(gastoTotalMes)}.`;
+  const detallePortada = !cargando && !sinCifras && !esMesFuturo ? partesDelMes.join(' y ') : null;
+
+  /** El vehículo del recorrido más reciente: el que más probablemente toca. */
+  const vehiculoSugerido = useMemo(() => {
+    const ultimo = [...recorridosTodos]
+      .filter((r) => r.vehiculo_id)
+      .sort((a, b) => `${b.fecha}${b.hora_inicio}`.localeCompare(`${a.fecha}${a.hora_inicio}`))[0];
+    return ultimo?.vehiculo_id ?? null;
+  }, [recorridosTodos]);
+
+  /** Lo último del mes, recorridos y riegos juntos, del más reciente al más antiguo. */
+  const ultimosDelMes = useMemo(() => [
+    ...Object.values(recorridosMensuales).flat().map((registro) => ({
+      tipo: 'recorrido', registro, orden: `${registro.fecha}${registro.hora_inicio}`, clave: `recorrido-${registro.id}`,
+    })),
+    ...Object.values(riegosMensuales).flat().map((registro) => ({
+      tipo: 'riego', registro, orden: `${registro.fecha}${registro.hora}`, clave: `riego-${registro.id}`,
+    })),
+  ].sort((a, b) => b.orden.localeCompare(a.orden)).slice(0, 12), [recorridosMensuales, riegosMensuales]);
+
+  const registrarRiegoRapido = async (datos) => {
+    try {
+      const { respuesta, guardadoSinConexion } = await registrar({ tipo: 'riego', datos });
+      if (guardadoSinConexion) {
+        showAlert('info', 'Sin conexión: el riego se guardó en este teléfono y se enviará solo cuando vuelva la conexión.', 6000);
+      } else if (fueBien(respuesta)) {
+        showAlert('success', 'Riego registrado');
+      } else {
+        showAlert('error', mensajeDeRespuesta(respuesta));
+        return false;
+      }
+      riegosSinEsqueleto.current = true;
+      setRefrescoRiegos((n) => n + 1);
+      return true;
+    } catch (error) {
+      showAlert('error', 'No se pudo registrar: ' + mensajeDeError(error));
+      return false;
+    }
+  };
+
+  const pedirTerminarMes = () => {
+    // Terminarlo con algo aún en el teléfono haría que ese registro
+    // rebotara al llegar: el mes ya no admitiría cambios.
+    if (porEnviarDelMes > 0) {
+      showAlert('warning', `Antes de terminar ${nombreMes} tienen que llegar al servidor ${porEnviarDelMes === 1 ? 'el cambio guardado' : `los ${porEnviarDelMes} cambios guardados`} sin conexión.`, 6000);
+      return;
+    }
+    setAccionMes('terminar');
+  };
+
+  const exportarDelMes = puedeRecorridos && puedeRiegos
+    ? exportarGeneralPDF
+    : puedeRecorridos ? exportarPDF : exportarRiegosPDF;
+  const mesCerradoOCobrado = ['terminado', 'cobrado'].includes(cierreDelMes?.estado);
+
+  /** En qué punto está el mes, en una línea, para la tarjeta del móvil. */
+  let estadoDelMes;
+  if (sinCifras) estadoDelMes = 'Sin conexión: sin datos guardados';
+  else if (esMesFuturo) estadoDelMes = 'Aún no empieza';
+  else if (cierreDelMes?.estado === 'cobrado') estadoDelMes = `Cobrado: ${dinero.format(Number(cierreDelMes.total_cobrado))}`;
+  else if (cierreDelMes?.estado === 'terminado') estadoDelMes = 'Terminado, pendiente de cobro';
+  else estadoDelMes = esMesActual ? 'En curso' : 'Sigue abierto: termínalo para cobrar';
+
+  const accesos = [
+    {
+      clave: 'pdf', etiqueta: 'PDF del mes', icono: FileDown, onClick: exportarDelMes,
+      deshabilitado: cargando || registrosDelMes === 0,
+    },
+    { clave: 'calendario', etiqueta: 'Calendario', icono: CalendarIcon, onClick: () => irA('cronograma'), tono: 'info' },
+    { clave: 'graficas', etiqueta: 'Gasto por mes', icono: BarChart3, onClick: () => irA('graficas'), tono: 'brand' },
+    mesCerradoOCobrado
+      ? { clave: 'mes', etiqueta: 'Reabrir mes', icono: LockOpen, onClick: () => setAccionMes('reabrir'), tono: 'caution', deshabilitado: ocupadoMes }
+      : { clave: 'mes', etiqueta: 'Terminar mes', icono: Lock, onClick: pedirTerminarMes, tono: 'positive', deshabilitado: ocupadoMes || esMesFuturo },
+  ];
+
   return (
     <div className="pb-4">
-      {/* ── Cabecera ────────────────────────────────────────────────────────
-          El título con la fecha de hoy al lado, y a la derecha lo que
-          gobierna la pantalla: el mes y las acciones. */}
-      <div className="mb-6 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-large-title font-bold tracking-tight text-label sm:text-[2.5rem] sm:leading-[1.1]">
-            Resumen
-          </h1>
-          <span className="flex items-center gap-2 rounded-full border border-separator/70 bg-surface px-3.5 py-1.5 text-footnote text-label-secondary">
-            <CalendarIcon size={14} strokeWidth={2} aria-hidden="true" />
-            Hoy, {fechaDeHoy.format(new Date())}
-          </span>
+      {esMovil ? (
+        <ResumenMovil
+          nombre={String(user?.nombre || user?.usuario || '').trim() || 'Bienvenido'}
+          inicial={inicial}
+          mes={mesActual}
+          anio={anioActual}
+          onCambiarMes={cambiarMes}
+          estadoDelMes={estadoDelMes}
+          total={dinero.format(gastoTotalMes)}
+          datos={[
+            puedeRecorridos && { icono: RouteIcon, etiqueta: 'Recorridos', valor: totalRecorridosMes },
+            puedeRiegos && { icono: Droplets, etiqueta: 'Riegos', valor: totalRiegosMes },
+          ].filter(Boolean)}
+          cargando={cargando || sinCifras}
+          accionMes={mesCerradoOCobrado
+            ? { etiqueta: 'Reabrir', reabrir: true, onClick: () => setAccionMes('reabrir'), deshabilitado: ocupadoMes }
+            : { etiqueta: 'Terminar mes', onClick: pedirTerminarMes, deshabilitado: ocupadoMes || esMesFuturo }}
+          onPdf={exportarDelMes}
+          pdfDeshabilitado={cargando || registrosDelMes === 0}
+          onNuevoRecorrido={puedeRecorridos ? () => handleOpenModal() : null}
+          onNuevoRiego={puedeRiegos ? () => setModalRiego(true) : null}
+          onCalendario={() => irA('cronograma')}
+          onGraficas={() => irA('graficas')}
+          ultimos={ultimosDelMes}
+        />
+      ) : (
+      <>
+        {/* ── Portada ─────────────────────────────────────────────────────────
+            El paisaje con el saludo y el mes; encima de su borde, la tarjeta
+            para registrar y, al lado o debajo, los accesos rápidos. */}
+        <Portada
+          nombre={nombreCorto}
+          inicial={inicial}
+          resumen={resumenPortada}
+          detalle={detallePortada}
+          mes={mesActual}
+          anio={anioActual}
+          onCambiarMes={cambiarMes}
+        />
+
+        <div className="relative z-10 -mt-14 mb-6 md:px-6 lg:flex lg:items-end lg:gap-8 xl:px-10">
+          {(puedeRecorridos || puedeRiegos) && (
+            <RegistroRapido
+              className="lg:w-[34rem] lg:shrink-0 xl:w-[38rem]"
+              puedeRecorridos={puedeRecorridos}
+              puedeRiegos={puedeRiegos}
+              vehiculos={vehiculos}
+              vehiculoSugerido={vehiculoSugerido}
+              onRecorrido={handleOpenModal}
+              onRiego={registrarRiegoRapido}
+            />
+          )}
+          <AccesosRapidos accesos={accesos} className="mt-5 lg:mt-0 lg:flex-1 lg:pb-2" />
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          {/* El mes gobierna toda la pantalla —cifras, barras y calendario—,
-              así que vive en la cabecera y no dentro de una tarjeta. */}
-          <SelectorDeMes mes={mesActual} anio={anioActual} onCambiar={cambiarMes} />
+        <UltimosRegistros
+          registros={ultimosDelMes}
+          nombreMes={nombreMes}
+          onVerTodo={() => irA('cronograma')}
+        />
+      </>
+      )}
 
-          {/* Con los dos servicios se emite UN documento con su total; con
-              uno solo, el informe propio de ese servicio. */}
-          {puedeRecorridos && puedeRiegos ? (
-            <Button
-              variant="secondary" className="!rounded-full" onClick={exportarGeneralPDF}
-              disabled={cargando || (totalRecorridosMes === 0 && totalRiegosMes === 0)}
-              icon={<FileDown size={16} strokeWidth={2.1} />}
-            >
-              PDF del mes
-            </Button>
-          ) : puedeRecorridos ? (
-            <Button
-              variant="secondary" className="!rounded-full" onClick={exportarPDF}
-              disabled={loading || totalRecorridosMes === 0}
-              icon={<FileDown size={16} strokeWidth={2.1} />}
-            >
-              PDF recorridos
-            </Button>
-          ) : (
-            <Button
-              variant="secondary" className="!rounded-full" onClick={exportarRiegosPDF}
-              disabled={loadingRiegos || totalRiegosMes === 0}
-              icon={<FileDown size={16} strokeWidth={2.1} />}
-            >
-              PDF riegos
-            </Button>
-          )}
-          {puedeRiegos && (
-            <Button
-              variant="secondary" className="!rounded-full" onClick={() => setModalRiego(true)}
-              icon={<Plus size={17} strokeWidth={2.3} />}
-            >
-              Nuevo riego
-            </Button>
-          )}
-          {puedeRecorridos && (
-            <Button className="!rounded-full" onClick={handleOpenModal} icon={<Plus size={17} strokeWidth={2.3} />}>
-              Nuevo recorrido
-            </Button>
-          )}
-        </div>
-      </div>
-
-      {/* ── En qué punto está el mes ─────────────────────────────────────────── */}
+      {/* ── En qué punto está el mes ─────────────────────────────────────────
+          En el móvil lo dice la tarjeta del mes, arriba. */}
+      {!esMovil && (
       <EstadoDelMes
         nombreMes={`${nombresMeses[mesActual - 1].toLowerCase()} de ${anioActual}`}
         cierre={cierreDelMes}
@@ -1013,17 +1117,10 @@ const Dashboard = () => {
         esFuturo={esMesFuturo}
         esAdmin={isAdmin}
         ocupado={ocupadoMes}
-        onTerminar={() => {
-          // Terminarlo con algo aún en el teléfono haría que ese registro
-          // rebotara al llegar: el mes ya no admitiría cambios.
-          if (porEnviarDelMes > 0) {
-            showAlert('warning', `Antes de terminar ${nombresMeses[mesActual - 1].toLowerCase()} tienen que llegar al servidor ${porEnviarDelMes === 1 ? 'el registro guardado' : `los ${porEnviarDelMes} registros guardados`} sin conexión.`, 6000);
-            return;
-          }
-          setAccionMes('terminar');
-        }}
+        onTerminar={pedirTerminarMes}
         onReabrir={() => setAccionMes('reabrir')}
       />
+      )}
 
       {/* Sin conexión y sin copia: se dice, en vez de pintar ceros. */}
       {sinCifras && !cargando && (
@@ -1059,7 +1156,7 @@ const Dashboard = () => {
 
       {/* ── Gasto por mes y tipos de recorrido ──────────────────────────────── */}
       {!sinCifras && (
-      <div className="mb-4 grid grid-cols-1 gap-4 xl:grid-cols-12">
+      <div id="graficas" className="mb-4 grid scroll-mt-24 grid-cols-1 gap-4 xl:grid-cols-12">
         <Card className={puedeRecorridos ? 'xl:col-span-7' : 'xl:col-span-12'}>
           <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-title3 font-semibold text-label">Gasto por mes</h2>
@@ -1578,7 +1675,7 @@ const Dashboard = () => {
       <RiegoModal
         abierto={modalRiego}
         onCerrar={() => setModalRiego(false)}
-        onGuardado={() => setRefrescoRiegos((n) => n + 1)}
+        onGuardado={() => { riegosSinEsqueleto.current = true; setRefrescoRiegos((n) => n + 1); }}
       />
     </div>
   );

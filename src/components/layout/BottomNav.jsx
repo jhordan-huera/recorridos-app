@@ -4,6 +4,54 @@ import { motion, useReducedMotion } from 'motion/react';
 import { useAuth } from '../../context/AuthContext';
 import { entradasDeMenu, estaActiva } from '../../lib/navegacion';
 import { springSnappy, haptics } from '../../lib/motion';
+import { useEsMovil } from '../../hooks/useMediaPreference';
+
+/**
+ * Barra del móvil: una píldora flotante. La sección en la que se está
+ * enseña su nombre; las demás, solo el icono (el nombre queda para los
+ * lectores de pantalla y en el `title`). Así caben hasta siete sin cortar
+ * ninguna etiqueta a la mitad.
+ */
+const BarraMovil = ({ navItems, location, reduceMotion }) => (
+    <nav
+        aria-label="Navegación principal"
+        className="fixed inset-x-0 bottom-0 z-40 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+    >
+        <ul className="mx-auto flex max-w-md items-center gap-1 rounded-full bg-surface/90 p-1.5 shadow-level-3 ring-1 ring-separator/30 backdrop-blur-regular">
+            {navItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = estaActiva(item, location.pathname);
+                return (
+                    <li key={item.path} className={isActive ? 'shrink-0' : 'min-w-0 flex-1'}>
+                        <Link
+                            to={item.path}
+                            onClick={() => haptics.tick()}
+                            aria-current={isActive ? 'page' : undefined}
+                            title={item.label}
+                            className="tappable relative flex h-11 items-center justify-center gap-1.5 rounded-full px-3"
+                        >
+                            {isActive && (
+                                <motion.span
+                                    layoutId="barra-movil-activa"
+                                    transition={reduceMotion ? { duration: 0.12 } : springSnappy}
+                                    className="absolute inset-0 rounded-full bg-pastel"
+                                />
+                            )}
+                            <Icon
+                                size={20}
+                                strokeWidth={isActive ? 2.4 : 1.9}
+                                className={`relative shrink-0 ${isActive ? 'text-marino' : 'text-label-secondary'}`}
+                            />
+                            {isActive
+                                ? <span className="relative text-footnote font-semibold text-marino">{item.label}</span>
+                                : <span className="sr-only">{item.label}</span>}
+                        </Link>
+                    </li>
+                );
+            })}
+        </ul>
+    </nav>
+);
 
 const BottomNav = () => {
     const location = useLocation();
@@ -11,6 +59,9 @@ const BottomNav = () => {
     const reduceMotion = useReducedMotion();
 
     const navItems = entradasDeMenu({ isAdmin, puedeRecorridos, puedeRiegos, incluirPerfil: true });
+    const esMovil = useEsMovil();
+
+    if (esMovil) return <BarraMovil navItems={navItems} location={location} reduceMotion={reduceMotion} />;
 
     return (
         <nav

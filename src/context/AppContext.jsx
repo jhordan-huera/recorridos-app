@@ -1,4 +1,5 @@
 import { createContext, useState, useContext, useEffect, useCallback, useMemo } from 'react';
+import { CONSULTA_MOVIL } from '../hooks/useMediaPreference';
 
 const AppContext = createContext();
 
@@ -47,19 +48,27 @@ export const AppProvider = ({ children }) => {
       root.classList.toggle('dark', resolved === 'dark');
 
       // La barra de estado del navegador acompaña al tema en lugar de
-      // quedarse en blanco sobre una app oscura.
+      // quedarse en blanco sobre una app oscura. En el móvil el fondo claro
+      // es azul (index.css), y la barra lo sigue.
       const meta = document.querySelector('meta[name="theme-color"]');
-      if (meta) meta.setAttribute('content', resolved === 'dark' ? '#000000' : '#f2f2f7');
+      const movil = window.matchMedia?.(CONSULTA_MOVIL).matches;
+      if (meta) meta.setAttribute('content', resolved === 'dark' ? '#000000' : movil ? '#eaf1fc' : '#f2f2f7');
     };
 
     apply();
     localStorage.setItem(THEME_KEY, theme);
+    if (!window.matchMedia) return undefined;
 
+    // Girar el teléfono o cambiar el tamaño de la ventana cambia el fondo.
+    const ancho = window.matchMedia(CONSULTA_MOVIL);
+    ancho.addEventListener('change', apply);
     // Si seguimos al sistema, reaccionamos cuando el sistema cambia.
-    if (theme !== 'system' || !window.matchMedia) return undefined;
-    const mql = window.matchMedia('(prefers-color-scheme: dark)');
-    mql.addEventListener('change', apply);
-    return () => mql.removeEventListener('change', apply);
+    const sistema = theme === 'system' ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+    sistema?.addEventListener('change', apply);
+    return () => {
+      ancho.removeEventListener('change', apply);
+      sistema?.removeEventListener('change', apply);
+    };
   }, [theme]);
 
   /**

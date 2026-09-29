@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import {
   Plus, RefreshCw, ChevronLeft, ChevronRight, Route as RouteIcon,
-  Clock, Bus, Pencil, Trash2, X, CloudOff,
+  Clock, Bus, Pencil, Trash2, X, CloudOff, Wallet,
 } from 'lucide-react';
 import { useAlert } from '../context/AlertContext';
 import { usePendientes } from '../context/PendientesContext';
@@ -25,6 +25,17 @@ import PageHeader from '../components/ui/PageHeader';
 import StatCard from '../components/ui/StatCard';
 import EmptyState from '../components/ui/EmptyState';
 import { crossFade, springSheet, springSnappy, haptics } from '../lib/motion';
+import { useEsMovil } from '../hooks/useMediaPreference';
+import SelectorDeMes from '../components/ui/SelectorDeMes';
+import {
+  CabeceraMovil, BuscadorMovil, FiltrosMovil, CifrasMovil, TarjetaMovil, AvatarMovil, InsigniaMovil,
+} from '../components/movil/Movil';
+
+const TIPOS_MOVIL = [
+  { valor: 'todos', etiqueta: 'Todos' },
+  { valor: 'traer', etiqueta: 'Traer' },
+  { valor: 'llevar', etiqueta: 'Llevar' },
+];
 
 const nombresMeses = [
   'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
@@ -66,10 +77,22 @@ const masRecienteArriba = (a, b) => (String(a.fecha) === String(b.fecha)
   ? String(b.hora_inicio ?? '').localeCompare(String(a.hora_inicio ?? ''))
   : String(b.fecha).localeCompare(String(a.fecha)));
 
+/** "lun 28 sep": en el móvil el mes ya está arriba y el año sobra. */
+const DIAS_CORTOS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
+const fechaCorta = (fecha) => {
+  const [a, m, d] = String(fecha).slice(0, 10).split('-').map(Number);
+  if (!a || !m || !d) return fecha;
+  return `${DIAS_CORTOS[new Date(a, m - 1, d).getDay()]} ${d} ${nombresMeses[m - 1].slice(0, 3).toLowerCase()}`;
+};
+
 const Recorridos = () => {
   const { showAlert } = useAlert();
   const { pendientes, registrar, editar, borrar } = usePendientes();
   const reduceMotion = useReducedMotion();
+  const esMovil = useEsMovil();
+  // Solo en el móvil: filtro por tipo y búsqueda sobre la lista del mes.
+  const [filtroTipo, setFiltroTipo] = useState('todos');
+  const [busqueda, setBusqueda] = useState('');
 
   const [recorridos, setRecorridos] = useState([]);
   const [mostrarModal, setMostrarModal] = useState(false);
@@ -136,6 +159,20 @@ const Recorridos = () => {
       return parseInt(month, 10) === mesSeleccionado && parseInt(year, 10) === anioSeleccionado;
     })
     .sort(masRecienteArriba), [recorridos, pendientes, mesSeleccionado, anioSeleccionado]);
+
+  /** La lista del móvil: la del mes con el filtro de tipo y la búsqueda. */
+  const listaMovil = useMemo(() => {
+    const termino = busqueda.trim().toLowerCase();
+    return recorridosFiltrados.filter((r) => {
+      if (filtroTipo !== 'todos' && r.tipo_recorrido !== filtroTipo) return false;
+      if (!termino) return true;
+      const texto = [
+        r.vehiculo_descripcion, r.notas,
+        ...(r.ninos || []).map((n) => `${n.nombre} ${n.apellidos}`),
+      ].join(' ').toLowerCase();
+      return texto.includes(termino);
+    });
+  }, [recorridosFiltrados, filtroTipo, busqueda]);
 
   const estadisticas = useMemo(() => ({
     totalMes: recorridosFiltrados.reduce((total, r) => total + (parseFloat(r.costo) || 0), 0),
@@ -310,213 +347,306 @@ const Recorridos = () => {
 
   return (
     <div className="pb-4">
-      <PageHeader
-        title="Recorridos"
-        subtitle="Rutas programadas y su costo"
-        actions={
-          <>
-            <Button
-              variant="secondary"
-              onClick={loadRecorridos}
-              disabled={loading}
-              icon={<RefreshCw size={16} strokeWidth={2.1} className={loading ? 'animate-spin' : ''} />}
-            >
-              Actualizar
-            </Button>
-            <Button onClick={handleOpenModal} icon={<Plus size={17} strokeWidth={2.3} />}>
-              Nuevo recorrido
-            </Button>
-          </>
-        }
-      />
-
-      {/* Navegación de mes + resumen */}
-      <div className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-12">
-        <Card padding="p-1.5" className="flex items-center justify-between lg:col-span-3">
-          <motion.button
-            type="button"
-            onClick={() => cambiarMes(-1)}
-            aria-label="Mes anterior"
-            whileTap={reduceMotion ? { opacity: 0.6 } : { scale: 0.9 }}
-            transition={springSnappy}
-            className="tappable rounded-field p-2 text-label-secondary transition-colors hover:bg-fill/12 hover:text-label"
-          >
-            <ChevronLeft size={18} strokeWidth={2.2} />
-          </motion.button>
-
-          <div className="text-center">
-            <p className="text-subhead font-semibold text-label">{nombresMeses[mesSeleccionado - 1]}</p>
-            <p className="tabular text-footnote text-label-tertiary">{anioSeleccionado}</p>
-          </div>
-
-          <motion.button
-            type="button"
-            onClick={() => cambiarMes(1)}
-            aria-label="Mes siguiente"
-            whileTap={reduceMotion ? { opacity: 0.6 } : { scale: 0.9 }}
-            transition={springSnappy}
-            className="tappable rounded-field p-2 text-label-secondary transition-colors hover:bg-fill/12 hover:text-label"
-          >
-            <ChevronRight size={18} strokeWidth={2.2} />
-          </motion.button>
-        </Card>
-
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 lg:col-span-9">
-          <StatCard
-            label="Gasto del mes"
-            value={sinDatos ? '—' : `$${estadisticas.totalMes.toFixed(2)}`}
-            tone="positive"
-            footnote={porEnviarDelMes > 0
-              ? `Incluye ${porEnviarDelMes} por enviar`
-              : `Acumulado en ${nombresMeses[mesSeleccionado - 1].toLowerCase()}`}
+      {esMovil ? (
+        <>
+          <CabeceraMovil
+            titulo="Recorridos"
+            accion={{ etiqueta: 'Nuevo recorrido', icono: Plus, onClick: handleOpenModal }}
           />
-          <StatCard label="Trayectos" value={sinDatos ? '—' : estadisticas.totalRecorridos} tone="brand" />
-          <StatCard label="Vehículos usados" value={sinDatos ? '—' : estadisticas.vehiculosUsados} tone="caution" />
-        </div>
-      </div>
+          <div className="mb-4 flex justify-center">
+            <SelectorDeMes
+              mes={mesSeleccionado} anio={anioSeleccionado}
+              onCambiar={cambiarMes}
+            />
+          </div>
+          <BuscadorMovil
+            valor={busqueda} onCambiar={setBusqueda}
+            placeholder="Buscar por vehículo o estudiante"
+          />
+          <FiltrosMovil
+            etiqueta="Tipo de recorrido" opciones={TIPOS_MOVIL}
+            valor={filtroTipo} onCambiar={setFiltroTipo}
+          />
+          <CifrasMovil
+            cifras={[
+              { clave: 'gasto', icono: Wallet, valor: sinDatos ? '—' : `$${estadisticas.totalMes.toFixed(2)}`, etiqueta: 'Gasto del mes' },
+              { clave: 'trayectos', icono: RouteIcon, valor: sinDatos ? '—' : estadisticas.totalRecorridos, etiqueta: 'Trayectos' },
+              { clave: 'vehiculos', icono: Bus, valor: sinDatos ? '—' : estadisticas.vehiculosUsados, etiqueta: 'Vehículos' },
+            ]}
+          />
 
-      {sinDatos && !loading && (
-        <EmptyState
-          icon={CloudOff}
-          title="Sin conexión"
-          message={`Los recorridos no se habían abierto con internet en este teléfono, así que no hay datos guardados que mostrar.${recorridosFiltrados.length ? ' Abajo solo ves lo registrado sin conexión.' : ''}`}
-          className="mb-6"
-        />
-      )}
+          {sinDatos && !loading && (
+            <EmptyState
+              icon={CloudOff}
+              title="Sin conexión"
+              message="Los recorridos no se habían abierto con internet en este teléfono, así que no hay datos guardados que mostrar."
+              className="mb-5"
+            />
+          )}
 
-      {/* Listado */}
-      {loading ? (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {[...Array(8)].map((_, index) => <CardSkeleton key={index} lineas={4} />)}
-        </div>
-      ) : sinDatos && recorridosFiltrados.length === 0 ? null : recorridosFiltrados.length === 0 ? (
-        <EmptyState
-          icon={RouteIcon}
-          title="Sin recorridos este mes"
-          message={`No hay rutas registradas en ${nombresMeses[mesSeleccionado - 1].toLowerCase()} de ${anioSeleccionado}.`}
-          action={
-            <Button onClick={handleOpenModal} icon={<Plus size={17} strokeWidth={2.3} />}>
-              Nuevo recorrido
-            </Button>
+          {loading ? (
+            <div className="grid grid-cols-2 gap-3">
+              {[...Array(6)].map((_, index) => <Skeleton key={index} variant="text" className="h-44 w-full !rounded-[1.4rem]" />)}
+            </div>
+          ) : listaMovil.length === 0 ? (
+            !sinDatos && (
+              <EmptyState
+                icon={RouteIcon}
+                title={busqueda || filtroTipo !== 'todos' ? 'Sin coincidencias' : 'Sin recorridos este mes'}
+                message={busqueda || filtroTipo !== 'todos'
+                  ? 'Ningún recorrido del mes coincide con esa búsqueda.'
+                  : `No hay rutas registradas en ${nombresMeses[mesSeleccionado - 1].toLowerCase()} de ${anioSeleccionado}.`}
+              />
+            )
+          ) : (
+            <ul className="grid grid-cols-2 gap-3">
+              {listaMovil.map((recorrido, indice) => {
+                const llevar = recorrido.tipo_recorrido === 'llevar';
+                const estudiantes = recorrido.ninos?.length || 0;
+                return (
+                  <li key={recorrido.id}>
+                    <TarjetaMovil
+                      destacada={indice === 0}
+                      avatar={(
+                        <AvatarMovil fondo={llevar ? 'bg-surface text-caution' : 'bg-surface text-positive'}>
+                          <RouteIcon size={18} strokeWidth={2.1} />
+                        </AvatarMovil>
+                      )}
+                      titulo={fechaCorta(recorrido.fecha)}
+                      subtitulo={`${tipoLabel[recorrido.tipo_recorrido] || recorrido.tipo_recorrido} · ${formatearHora(recorrido.hora_inicio)}`}
+                      insignia={recorrido._pendiente ? (
+                        <InsigniaMovil
+                          tono={recorrido._pendiente === 'rechazado' ? 'error' : 'aviso'}
+                          title={recorrido._error || undefined}
+                        >
+                          {recorrido._pendiente === 'rechazado' ? 'No se pudo enviar' : 'Por enviar'}
+                        </InsigniaMovil>
+                      ) : null}
+                      valor={`$${parseFloat(recorrido.costo || 0).toFixed(2)}`}
+                      detalle={`${recorrido.vehiculo_descripcion || 'Sin vehículo'} · ${estudiantes} ${estudiantes === 1 ? 'estudiante' : 'estudiantes'}`}
+                      onAbrir={() => handleEdit(recorrido)}
+                      etiquetaAbrir={`Editar el recorrido del ${formatearFecha(recorrido.fecha)}`}
+                      onBorrar={() => { setRecorridoAEliminar(recorrido); setShowDeleteModal(true); }}
+                      etiquetaBorrar={`Eliminar el recorrido del ${formatearFecha(recorrido.fecha)}`}
+                    />
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </>
+      ) : (
+      <>
+        <PageHeader
+          title="Recorridos"
+          subtitle="Rutas programadas y su costo"
+          actions={
+            <>
+              <Button
+                variant="secondary"
+                onClick={loadRecorridos}
+                disabled={loading}
+                icon={<RefreshCw size={16} strokeWidth={2.1} className={loading ? 'animate-spin' : ''} />}
+              >
+                Actualizar
+              </Button>
+              <Button onClick={handleOpenModal} icon={<Plus size={17} strokeWidth={2.3} />}>
+                Nuevo recorrido
+              </Button>
+            </>
           }
         />
-      ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          <AnimatePresence initial={false}>
-            {recorridosFiltrados.map((recorrido) => (
-              <motion.div
-                key={recorrido.id}
-                layout
-                initial={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.97 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.97 }}
-                transition={reduceMotion ? crossFade : springSheet}
-              >
-                <Card padding="p-0" className="flex h-full flex-col overflow-hidden">
-                  <div className="flex-1 p-5">
-                    <div className="mb-4 flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="text-caption text-label-tertiary">Fecha</p>
-                        <p className="tabular mt-0.5 text-headline font-semibold text-label">
-                          {formatearFecha(recorrido.fecha)}
-                        </p>
-                      </div>
-                      <div className="flex shrink-0 flex-col items-end gap-1">
-                        <Badge tone={tipoTone[recorrido.tipo_recorrido] || 'neutral'}>
-                          {tipoLabel[recorrido.tipo_recorrido] || recorrido.tipo_recorrido}
-                        </Badge>
-                        {recorrido._pendiente && (
-                          <Badge
-                            tone={recorrido._pendiente === 'rechazado' ? 'critical' : 'caution'}
-                            title={recorrido._error || undefined}
-                          >
-                            {recorrido._pendiente === 'rechazado' ? 'No se pudo enviar' : 'Por enviar'}
+
+        {/* Navegación de mes + resumen */}
+        <div className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-12">
+          <Card padding="p-1.5" className="flex items-center justify-between lg:col-span-3">
+            <motion.button
+              type="button"
+              onClick={() => cambiarMes(-1)}
+              aria-label="Mes anterior"
+              whileTap={reduceMotion ? { opacity: 0.6 } : { scale: 0.9 }}
+              transition={springSnappy}
+              className="tappable rounded-field p-2 text-label-secondary transition-colors hover:bg-fill/12 hover:text-label"
+            >
+              <ChevronLeft size={18} strokeWidth={2.2} />
+            </motion.button>
+
+            <div className="text-center">
+              <p className="text-subhead font-semibold text-label">{nombresMeses[mesSeleccionado - 1]}</p>
+              <p className="tabular text-footnote text-label-tertiary">{anioSeleccionado}</p>
+            </div>
+
+            <motion.button
+              type="button"
+              onClick={() => cambiarMes(1)}
+              aria-label="Mes siguiente"
+              whileTap={reduceMotion ? { opacity: 0.6 } : { scale: 0.9 }}
+              transition={springSnappy}
+              className="tappable rounded-field p-2 text-label-secondary transition-colors hover:bg-fill/12 hover:text-label"
+            >
+              <ChevronRight size={18} strokeWidth={2.2} />
+            </motion.button>
+          </Card>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 lg:col-span-9">
+            <StatCard
+              label="Gasto del mes"
+              value={sinDatos ? '—' : `$${estadisticas.totalMes.toFixed(2)}`}
+              tone="positive"
+              footnote={porEnviarDelMes > 0
+                ? `Incluye ${porEnviarDelMes} por enviar`
+                : `Acumulado en ${nombresMeses[mesSeleccionado - 1].toLowerCase()}`}
+            />
+            <StatCard label="Trayectos" value={sinDatos ? '—' : estadisticas.totalRecorridos} tone="brand" />
+            <StatCard label="Vehículos usados" value={sinDatos ? '—' : estadisticas.vehiculosUsados} tone="caution" />
+          </div>
+        </div>
+
+        {sinDatos && !loading && (
+          <EmptyState
+            icon={CloudOff}
+            title="Sin conexión"
+            message={`Los recorridos no se habían abierto con internet en este teléfono, así que no hay datos guardados que mostrar.${recorridosFiltrados.length ? ' Abajo solo ves lo registrado sin conexión.' : ''}`}
+            className="mb-6"
+          />
+        )}
+
+        {/* Listado */}
+        {loading ? (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {[...Array(8)].map((_, index) => <CardSkeleton key={index} lineas={4} />)}
+          </div>
+        ) : sinDatos && recorridosFiltrados.length === 0 ? null : recorridosFiltrados.length === 0 ? (
+          <EmptyState
+            icon={RouteIcon}
+            title="Sin recorridos este mes"
+            message={`No hay rutas registradas en ${nombresMeses[mesSeleccionado - 1].toLowerCase()} de ${anioSeleccionado}.`}
+            action={
+              <Button onClick={handleOpenModal} icon={<Plus size={17} strokeWidth={2.3} />}>
+                Nuevo recorrido
+              </Button>
+            }
+          />
+        ) : (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            <AnimatePresence initial={false}>
+              {recorridosFiltrados.map((recorrido) => (
+                <motion.div
+                  key={recorrido.id}
+                  layout
+                  initial={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.97 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.97 }}
+                  transition={reduceMotion ? crossFade : springSheet}
+                >
+                  <Card padding="p-0" className="flex h-full flex-col overflow-hidden">
+                    <div className="flex-1 p-5">
+                      <div className="mb-4 flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-caption text-label-tertiary">Fecha</p>
+                          <p className="tabular mt-0.5 text-headline font-semibold text-label">
+                            {formatearFecha(recorrido.fecha)}
+                          </p>
+                        </div>
+                        <div className="flex shrink-0 flex-col items-end gap-1">
+                          <Badge tone={tipoTone[recorrido.tipo_recorrido] || 'neutral'}>
+                            {tipoLabel[recorrido.tipo_recorrido] || recorrido.tipo_recorrido}
                           </Badge>
-                        )}
-                      </div>
-                    </div>
-
-                    <dl className="space-y-3">
-                      <div className="flex items-center justify-between gap-2">
-                        <dt className="flex items-center gap-1.5 text-footnote text-label-secondary">
-                          <Clock size={14} strokeWidth={2} className="text-label-tertiary" />
-                          Hora de salida
-                        </dt>
-                        <dd className="tabular text-footnote font-medium text-label">
-                          {formatearHora(recorrido.hora_inicio)}
-                        </dd>
-                      </div>
-
-                      <div className="flex items-start justify-between gap-2">
-                        <dt className="flex shrink-0 items-center gap-1.5 text-footnote text-label-secondary">
-                          <Bus size={14} strokeWidth={2} className="text-label-tertiary" />
-                          Vehículo
-                        </dt>
-                        <dd
-                          className="truncate text-right text-footnote font-medium text-label"
-                          title={recorrido.vehiculo_descripcion}
-                        >
-                          {recorrido.vehiculo_descripcion || 'Sin asignar'}
-                        </dd>
-                      </div>
-                    </dl>
-
-                    {recorrido.ninos?.length > 0 && (
-                      <div className="mt-4">
-                        <p className="text-caption text-label-tertiary">
-                          Estudiantes ({recorrido.ninos.length})
-                        </p>
-                        <div className="mt-2 flex -space-x-2">
-                          {recorrido.ninos.slice(0, 5).map((nino, index) => (
-                            <span
-                              key={index}
-                              title={nino.nombre}
-                              className="flex h-7 w-7 items-center justify-center rounded-full bg-fill/12
-                                         text-caption font-semibold text-label-secondary ring-2 ring-surface"
+                          {recorrido._pendiente && (
+                            <Badge
+                              tone={recorrido._pendiente === 'rechazado' ? 'critical' : 'caution'}
+                              title={recorrido._error || undefined}
                             >
-                              {nino.nombre?.charAt(0) || '?'}
-                            </span>
-                          ))}
-                          {recorrido.ninos.length > 5 && (
-                            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-fill/12
-                                             text-caption font-medium text-label-tertiary ring-2 ring-surface">
-                              +{recorrido.ninos.length - 5}
-                            </span>
+                              {recorrido._pendiente === 'rechazado' ? 'No se pudo enviar' : 'Por enviar'}
+                            </Badge>
                           )}
                         </div>
                       </div>
-                    )}
 
-                    <div className="mt-4 flex items-center justify-between border-t border-separator/50 pt-4">
-                      <span className="text-footnote text-label-secondary">Costo</span>
-                      <span className="tabular text-title3 font-semibold text-positive">
-                        ${parseFloat(recorrido.costo || 0).toFixed(2)}
-                      </span>
+                      <dl className="space-y-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <dt className="flex items-center gap-1.5 text-footnote text-label-secondary">
+                            <Clock size={14} strokeWidth={2} className="text-label-tertiary" />
+                            Hora de salida
+                          </dt>
+                          <dd className="tabular text-footnote font-medium text-label">
+                            {formatearHora(recorrido.hora_inicio)}
+                          </dd>
+                        </div>
+
+                        <div className="flex items-start justify-between gap-2">
+                          <dt className="flex shrink-0 items-center gap-1.5 text-footnote text-label-secondary">
+                            <Bus size={14} strokeWidth={2} className="text-label-tertiary" />
+                            Vehículo
+                          </dt>
+                          <dd
+                            className="truncate text-right text-footnote font-medium text-label"
+                            title={recorrido.vehiculo_descripcion}
+                          >
+                            {recorrido.vehiculo_descripcion || 'Sin asignar'}
+                          </dd>
+                        </div>
+                      </dl>
+
+                      {recorrido.ninos?.length > 0 && (
+                        <div className="mt-4">
+                          <p className="text-caption text-label-tertiary">
+                            Estudiantes ({recorrido.ninos.length})
+                          </p>
+                          <div className="mt-2 flex -space-x-2">
+                            {recorrido.ninos.slice(0, 5).map((nino, index) => (
+                              <span
+                                key={index}
+                                title={nino.nombre}
+                                className="flex h-7 w-7 items-center justify-center rounded-full bg-fill/12
+                                           text-caption font-semibold text-label-secondary ring-2 ring-surface"
+                              >
+                                {nino.nombre?.charAt(0) || '?'}
+                              </span>
+                            ))}
+                            {recorrido.ninos.length > 5 && (
+                              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-fill/12
+                                               text-caption font-medium text-label-tertiary ring-2 ring-surface">
+                                +{recorrido.ninos.length - 5}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="mt-4 flex items-center justify-between border-t border-separator/50 pt-4">
+                        <span className="text-footnote text-label-secondary">Costo</span>
+                        <span className="tabular text-title3 font-semibold text-positive">
+                          ${parseFloat(recorrido.costo || 0).toFixed(2)}
+                        </span>
+                      </div>
                     </div>
-                  </div>
 
-                  <div className="flex items-center gap-2 border-t border-separator/60 bg-surface-secondary px-4 py-3">
-                    <Button
-                      variant="secondary" size="sm" className="flex-1"
-                      onClick={() => handleEdit(recorrido)}
-                      icon={<Pencil size={14} strokeWidth={2.1} />}
-                    >
-                      Editar
-                    </Button>
-                    <Button
-                      variant="ghost" size="sm"
-                      aria-label="Eliminar recorrido"
-                      className="px-2.5 text-label-secondary hover:bg-critical/14 hover:text-critical"
-                      onClick={() => { setRecorridoAEliminar(recorrido); setShowDeleteModal(true); }}
-                    >
-                      <Trash2 size={16} strokeWidth={2} />
-                    </Button>
-                  </div>
-                </Card>
-              </motion.div>
-            ))}
-          </AnimatePresence>
-        </div>
+                    <div className="flex items-center gap-2 border-t border-separator/60 bg-surface-secondary px-4 py-3">
+                      <Button
+                        variant="secondary" size="sm" className="flex-1"
+                        onClick={() => handleEdit(recorrido)}
+                        icon={<Pencil size={14} strokeWidth={2.1} />}
+                      >
+                        Editar
+                      </Button>
+                      <Button
+                        variant="ghost" size="sm"
+                        aria-label="Eliminar recorrido"
+                        className="px-2.5 text-label-secondary hover:bg-critical/14 hover:text-critical"
+                        onClick={() => { setRecorridoAEliminar(recorrido); setShowDeleteModal(true); }}
+                      >
+                        <Trash2 size={16} strokeWidth={2} />
+                      </Button>
+                    </div>
+                  </Card>
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          </div>
+        )}
+
+      </>
       )}
 
       {/* Formulario */}
