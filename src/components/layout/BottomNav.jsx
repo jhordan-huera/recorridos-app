@@ -34,16 +34,16 @@ const BarraMovil = ({ navItems, location, reduceMotion }) => (
                                 <motion.span
                                     layoutId="barra-movil-activa"
                                     transition={reduceMotion ? { duration: 0.12 } : springSnappy}
-                                    className="absolute inset-0 rounded-full bg-pastel"
+                                    className="absolute inset-0 rounded-full bg-[rgb(var(--c-pastel))]"
                                 />
                             )}
                             <Icon
                                 size={20}
                                 strokeWidth={isActive ? 2.4 : 1.9}
-                                className={`relative shrink-0 ${isActive ? 'text-marino' : 'text-label-secondary'}`}
+                                className={`relative shrink-0 ${isActive ? 'text-[rgb(var(--c-marino))]' : 'text-label-secondary'}`}
                             />
                             {isActive
-                                ? <span className="relative text-footnote font-semibold text-marino">{item.label}</span>
+                                ? <span className="relative text-footnote font-semibold text-[rgb(var(--c-marino))]">{item.label}</span>
                                 : <span className="sr-only">{item.label}</span>}
                         </Link>
                     </li>

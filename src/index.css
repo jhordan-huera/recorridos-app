@@ -50,7 +50,11 @@
   --c-purple: 140 70 200;
 
   /* Presentación móvil (ver el bloque @media de abajo): tarjetas en azul
-     pastel y botones en azul marino, todo de la familia del acento. */
+     pastel y botones en azul marino, todo de la familia del acento. Se
+     usan con valores directos (`bg-[rgb(var(--c-pastel))]`) y no como
+     colores de tailwind.config.js: esa configuración es un módulo ES que
+     el servidor de desarrollo no recarga, y un color nuevo no aparecía
+     hasta reiniciarlo. */
   --c-pastel: 204 222 248;
   --c-pastel-2: 181 206 244;
   --c-marino: 16 44 99;
