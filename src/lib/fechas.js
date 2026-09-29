@@ -35,3 +35,25 @@ export const diaDeFecha = (fecha) => {
   const dia = parseInt(String(fecha ?? '').slice(8, 10), 10);
   return Number.isNaN(dia) ? null : dia;
 };
+
+const DIAS_CORTOS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
+const DIAS_LARGOS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+
+const partes = (fecha) => {
+  const [a, m, d] = String(fecha ?? '').slice(0, 10).split('-').map(Number);
+  return a && m && d ? { a, m, d, dia: new Date(a, m - 1, d).getDay() } : null;
+};
+
+/** "lun 28 sep" a partir de YYYY-MM-DD, sin pasar por la zona horaria. */
+export const fechaCorta = (fecha) => {
+  const p = partes(fecha);
+  return p ? `${DIAS_CORTOS[p.dia]} ${p.d} ${MESES[p.m - 1].slice(0, 3).toLowerCase()}` : String(fecha ?? '');
+};
+
+/** "Lunes, 28 de septiembre de 2026". */
+export const fechaLarga = (fecha) => {
+  const p = partes(fecha);
+  if (!p) return String(fecha ?? '');
+  const texto = `${DIAS_LARGOS[p.dia]}, ${p.d} de ${MESES[p.m - 1].toLowerCase()} de ${p.a}`;
+  return texto.charAt(0).toUpperCase() + texto.slice(1);
+};
