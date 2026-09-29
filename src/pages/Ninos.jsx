@@ -1,8 +1,11 @@
 import { useState, useEffect, useMemo } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import {
-  Plus, GraduationCap, MapPin, Phone, Activity, Pencil, Trash2,
+  Plus, GraduationCap, MapPin, Phone, Activity, Pencil, Trash2, Route as RouteIcon, CalendarDays, Bus,
 } from 'lucide-react';
+import DetalleMovil, { TarjetaDetalle, DatosDetalle, TextoDetalle } from '../components/movil/DetalleMovil';
+import { useRecorridosParaFicha } from '../hooks/useRecorridosParaFicha';
+import { fechaCorta } from '../lib/fechas';
 import { useApp } from '../context/AppContext';
 import { useAlert } from '../context/AlertContext';
 import {
@@ -33,6 +36,10 @@ const Ninos = () => {
   const { showAlert } = useAlert();
   const reduceMotion = useReducedMotion();
   const esMovil = useEsMovil();
+  const [detalle, setDetalle] = useState(null);
+  const [verDetalle, setVerDetalle] = useState(false);
+  const { pedir: pedirRecorridos, resumir } = useRecorridosParaFicha();
+  const abrirDetalle = (nino) => { setDetalle(nino); setVerDetalle(true); pedirRecorridos(); };
 
   const [formData, setFormData] = useState(emptyForm);
   const [mostrarModal, setMostrarModal] = useState(false);
@@ -189,8 +196,8 @@ const Ninos = () => {
                     iconoValor={Phone}
                     claseIconoValor="text-[rgb(var(--c-marino))]"
                     detalle="Teléfono de contacto"
-                    onAbrir={() => handleEdit(nino)}
-                    etiquetaAbrir={`Editar a ${nino.nombre} ${nino.apellidos}`}
+                    onAbrir={() => abrirDetalle(nino)}
+                    etiquetaAbrir={`Ver la ficha de ${nino.nombre} ${nino.apellidos}`}
                     onBorrar={() => { setNinoAEliminar(nino.id); setShowDeleteModal(true); }}
                     etiquetaBorrar={`Eliminar a ${nino.nombre} ${nino.apellidos}`}
                   />
@@ -335,6 +342,87 @@ const Ninos = () => {
 
       </>
       )}
+
+      {esMovil && detalle && (() => {
+        const { lista, delMes, listo } = resumir((r) => (r.ninos || []).some((n) => String(n.nino_id) === String(detalle.id)));
+        const nombre = `${detalle.nombre} ${detalle.apellidos}`;
+        const ultimo = lista[0];
+        const tipos = { traer: 'Traer', llevar: 'Llevar' };
+        return (
+          <DetalleMovil
+            abierto={verDetalle}
+            onCerrar={() => setVerDetalle(false)}
+            cabecera="Ficha del estudiante"
+            avatar={<span className="text-title2 font-bold">{detalle.nombre?.charAt(0)}{detalle.apellidos?.charAt(0)}</span>}
+            nombre={nombre}
+            subtitulo="Estudiante"
+            cifras={[
+              { clave: 'mes', icono: CalendarDays, valor: listo ? delMes.length : '…', etiqueta: 'Viajes del mes' },
+              { clave: 'total', icono: RouteIcon, valor: listo ? lista.length : '…', etiqueta: 'Viajes en total' },
+              { clave: 'ultimo', icono: Bus, valor: listo ? (ultimo ? fechaCorta(ultimo.fecha).split(' ').slice(1).join(' ') : '—') : '…', etiqueta: 'Último viaje' },
+            ]}
+            pestanas={[
+              {
+                clave: 'contacto',
+                etiqueta: 'Contacto',
+                contenido: (
+                  <TarjetaDetalle titulo="Datos de contacto">
+                    <DatosDetalle
+                      datos={[
+                        {
+                          icono: Phone, etiqueta: 'Teléfono', ancho: true,
+                          valor: detalle.telefono_contacto || 'Sin teléfono',
+                          href: detalle.telefono_contacto ? `tel:${detalle.telefono_contacto}` : undefined,
+                        },
+                        {
+                          icono: MapPin, etiqueta: 'Dirección', ancho: true,
+                          valor: detalle.direccion || 'Sin dirección registrada',
+                          href: detalle.direccion ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(detalle.direccion)}` : undefined,
+                        },
+                      ]}
+                    />
+                  </TarjetaDetalle>
+                ),
+              },
+              {
+                clave: 'viajes',
+                etiqueta: 'Recorridos',
+                contenido: (
+                  <TarjetaDetalle titulo="Últimos recorridos">
+                    {!listo ? (
+                      <TextoDetalle>Cargando…</TextoDetalle>
+                    ) : lista.length === 0 ? (
+                      <TextoDetalle>Todavía no ha viajado en ningún recorrido.</TextoDetalle>
+                    ) : (
+                      <ul className="space-y-2">
+                        {lista.slice(0, 8).map((r) => (
+                          <li key={r.id} className="flex items-center justify-between gap-3 rounded-[1rem] bg-[rgb(var(--c-pastel)/0.7)] px-3 py-2.5">
+                            <div className="min-w-0">
+                              <p className="text-footnote font-semibold text-label">{fechaCorta(r.fecha)} · {String(r.hora_inicio).slice(0, 5)}</p>
+                              <p className="truncate text-caption text-label-secondary">{tipos[r.tipo_recorrido] || r.tipo_recorrido} · {r.vehiculo_descripcion || 'Sin vehículo'}</p>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </TarjetaDetalle>
+                ),
+              },
+            ]}
+            onEditar={() => handleEdit(detalle)}
+            etiquetaEditar="Editar estudiante"
+            onEliminar={() => { setNinoAEliminar(detalle.id); setShowDeleteModal(true); }}
+            etiquetaEliminar={`Eliminar a ${nombre}`}
+            compartir={{
+              title: nombre,
+              text: [
+                detalle.telefono_contacto ? `Teléfono: ${detalle.telefono_contacto}` : null,
+                detalle.direccion ? `Dirección: ${detalle.direccion}` : null,
+              ].filter(Boolean).join('\n') || nombre,
+            }}
+          />
+        );
+      })()}
 
       <ConfirmModal
         isOpen={showDeleteModal}

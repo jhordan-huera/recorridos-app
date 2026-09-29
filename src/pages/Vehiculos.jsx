@@ -1,6 +1,12 @@
 import { useState, useEffect, useMemo } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { Plus, Bus, Zap, Pencil, Trash2, Car, Building2, FileText, CarTaxiFront, HandCoins, Users } from 'lucide-react';
+import {
+  Plus, Bus, Zap, Pencil, Trash2, Car, Building2, FileText, CarTaxiFront, HandCoins, Users,
+  Wallet, Hash, Route as RouteIcon, Tag,
+} from 'lucide-react';
+import DetalleMovil, { TarjetaDetalle, DatosDetalle, TextoDetalle } from '../components/movil/DetalleMovil';
+import { useRecorridosParaFicha } from '../hooks/useRecorridosParaFicha';
+import { fechaCorta } from '../lib/fechas';
 import { useApp } from '../context/AppContext';
 import { useAlert } from '../context/AlertContext';
 import {
@@ -59,6 +65,10 @@ const Vehiculos = () => {
   const { showAlert } = useAlert();
   const reduceMotion = useReducedMotion();
   const esMovil = useEsMovil();
+  const [detalle, setDetalle] = useState(null);
+  const [verDetalle, setVerDetalle] = useState(false);
+  const { pedir: pedirRecorridos, resumir } = useRecorridosParaFicha();
+  const abrirDetalle = (vehiculo) => { setDetalle(vehiculo); setVerDetalle(true); pedirRecorridos(); };
 
   const [formData, setFormData] = useState(emptyForm);
   const [mostrarModal, setMostrarModal] = useState(false);
@@ -261,8 +271,8 @@ const Vehiculos = () => {
                       detalle={repartoDisponible && vehiculo.auto_cobra
                         ? `Auto ${dinero.format(auto)} · Chofer ${dinero.format(chofer)}`
                         : 'Por recorrido'}
-                      onAbrir={() => handleEdit(vehiculo)}
-                      etiquetaAbrir={`Editar ${vehiculo.descripcion}`}
+                      onAbrir={() => abrirDetalle(vehiculo)}
+                      etiquetaAbrir={`Ver la ficha de ${vehiculo.descripcion}`}
                       onBorrar={() => { setVehiculoAEliminar(vehiculo.id); setShowDeleteModal(true); }}
                       etiquetaBorrar={`Eliminar ${vehiculo.descripcion}`}
                     />
@@ -422,6 +432,107 @@ const Vehiculos = () => {
 
       </>
       )}
+
+      {esMovil && detalle && (() => {
+        const { lista, delMes, listo } = resumir((r) => String(r.vehiculo_id) === String(detalle.id));
+        const { label, Icon } = getTipo(detalle.tipo);
+        const tipo = String(label).charAt(0).toUpperCase() + String(label).slice(1);
+        const { auto, chofer } = repartoDe(detalle);
+        const cobra = repartoDisponible && detalle.auto_cobra;
+        const paraElAuto = delMes.reduce((t, r) => t + (parseFloat(r.parte_auto) || 0), 0);
+        const tipos = { traer: 'Traer', llevar: 'Llevar' };
+        return (
+          <DetalleMovil
+            abierto={verDetalle}
+            onCerrar={() => setVerDetalle(false)}
+            cabecera="Ficha del vehículo"
+            avatar={<Icon size={30} strokeWidth={1.9} />}
+            nombre={detalle.descripcion}
+            subtitulo={`${tipo} · ${detalle.placa || 'Sin placa'}`}
+            cifras={[
+              { clave: 'tarifa', icono: Wallet, valor: dinero.format(parseFloat(detalle.costo_por_recorrido || 0)), etiqueta: 'Por recorrido' },
+              { clave: 'plazas', icono: Users, valor: detalle.capacidad || 0, etiqueta: 'Plazas' },
+              { clave: 'viajes', icono: RouteIcon, valor: listo ? delMes.length : '…', etiqueta: 'Viajes del mes' },
+              cobra
+                ? { clave: 'auto', icono: HandCoins, valor: listo ? dinero.format(paraElAuto) : '…', etiqueta: 'Al auto (mes)' }
+                : { clave: 'total', icono: Bus, valor: listo ? lista.length : '…', etiqueta: 'Viajes en total' },
+            ]}
+            pestanas={[
+              {
+                clave: 'detalle',
+                etiqueta: 'Detalle',
+                contenido: (
+                  <>
+                    <TarjetaDetalle titulo="Datos del vehículo">
+                      <DatosDetalle
+                        datos={[
+                          { icono: Tag, etiqueta: 'Tipo', valor: tipo },
+                          { icono: Hash, etiqueta: 'Placa', valor: detalle.placa || 'Sin placa' },
+                          { icono: Users, etiqueta: 'Capacidad', valor: `${detalle.capacidad || 0} pasajeros` },
+                          { icono: Wallet, etiqueta: 'Tarifa', valor: dinero.format(parseFloat(detalle.costo_por_recorrido || 0)) },
+                        ]}
+                      />
+                    </TarjetaDetalle>
+                    {repartoDisponible && (
+                      <TarjetaDetalle titulo="Reparto por recorrido">
+                        {cobra ? (
+                          <DatosDetalle
+                            datos={[
+                              { icono: HandCoins, etiqueta: 'Para el auto', valor: dinero.format(auto) },
+                              { icono: Wallet, etiqueta: 'Para el chofer', valor: dinero.format(chofer) },
+                            ]}
+                          />
+                        ) : (
+                          <TextoDetalle>El auto no cobra: todo lo del recorrido es para el chofer.</TextoDetalle>
+                        )}
+                      </TarjetaDetalle>
+                    )}
+                  </>
+                ),
+              },
+              {
+                clave: 'viajes',
+                etiqueta: 'Recorridos',
+                contenido: (
+                  <TarjetaDetalle titulo="Últimos recorridos">
+                    {!listo ? (
+                      <TextoDetalle>Cargando…</TextoDetalle>
+                    ) : lista.length === 0 ? (
+                      <TextoDetalle>Este vehículo todavía no tiene recorridos.</TextoDetalle>
+                    ) : (
+                      <ul className="space-y-2">
+                        {lista.slice(0, 8).map((r) => (
+                          <li key={r.id} className="flex items-center justify-between gap-3 rounded-[1rem] bg-[rgb(var(--c-pastel)/0.7)] px-3 py-2.5">
+                            <div className="min-w-0">
+                              <p className="text-footnote font-semibold text-label">{fechaCorta(r.fecha)} · {String(r.hora_inicio).slice(0, 5)}</p>
+                              <p className="truncate text-caption text-label-secondary">
+                                {tipos[r.tipo_recorrido] || r.tipo_recorrido} · {(r.ninos || []).length} {(r.ninos || []).length === 1 ? 'estudiante' : 'estudiantes'}
+                              </p>
+                            </div>
+                            <span className="tabular shrink-0 text-footnote font-bold text-label">{dinero.format(parseFloat(r.costo) || 0)}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </TarjetaDetalle>
+                ),
+              },
+            ]}
+            onEditar={() => handleEdit(detalle)}
+            etiquetaEditar="Editar vehículo"
+            onEliminar={() => { setVehiculoAEliminar(detalle.id); setShowDeleteModal(true); }}
+            etiquetaEliminar={`Eliminar ${detalle.descripcion}`}
+            compartir={{
+              title: detalle.descripcion,
+              text: [
+                `${tipo} · ${detalle.placa || 'sin placa'} · ${detalle.capacidad || 0} plazas`,
+                `Por recorrido: ${dinero.format(parseFloat(detalle.costo_por_recorrido || 0))}`,
+                cobra ? `Auto ${dinero.format(auto)} · Chofer ${dinero.format(chofer)}` : null,
+              ].filter(Boolean).join('\n'),
+            }}
+          />
+        );
+      })()}
 
       <ConfirmModal
         isOpen={showDeleteModal}

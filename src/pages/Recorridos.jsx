@@ -2,8 +2,10 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import {
   Plus, RefreshCw, ChevronLeft, ChevronRight, Route as RouteIcon,
-  Clock, Bus, Pencil, Trash2, X, CloudOff, Wallet,
+  Clock, Bus, Pencil, Trash2, X, CloudOff, Wallet, Users, HandCoins, CalendarDays, Hash, StickyNote,
 } from 'lucide-react';
+import { fechaCorta, fechaLarga } from '../lib/fechas';
+import DetalleMovil, { TarjetaDetalle, DatosDetalle, TextoDetalle } from '../components/movil/DetalleMovil';
 import { useAlert } from '../context/AlertContext';
 import { usePendientes } from '../context/PendientesContext';
 import { useRecargaAlSincronizar } from '../hooks/useRecargaAlSincronizar';
@@ -77,14 +79,6 @@ const masRecienteArriba = (a, b) => (String(a.fecha) === String(b.fecha)
   ? String(b.hora_inicio ?? '').localeCompare(String(a.hora_inicio ?? ''))
   : String(b.fecha).localeCompare(String(a.fecha)));
 
-/** "lun 28 sep": en el móvil el mes ya está arriba y el año sobra. */
-const DIAS_CORTOS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
-const fechaCorta = (fecha) => {
-  const [a, m, d] = String(fecha).slice(0, 10).split('-').map(Number);
-  if (!a || !m || !d) return fecha;
-  return `${DIAS_CORTOS[new Date(a, m - 1, d).getDay()]} ${d} ${nombresMeses[m - 1].slice(0, 3).toLowerCase()}`;
-};
-
 const Recorridos = () => {
   const { showAlert } = useAlert();
   const { pendientes, registrar, editar, borrar } = usePendientes();
@@ -93,6 +87,11 @@ const Recorridos = () => {
   // Solo en el móvil: filtro por tipo y búsqueda sobre la lista del mes.
   const [filtroTipo, setFiltroTipo] = useState('todos');
   const [busqueda, setBusqueda] = useState('');
+  // Ficha de detalle del móvil. El registro se conserva al cerrarla para
+  // que la animación de salida no se quede en blanco.
+  const [detalle, setDetalle] = useState(null);
+  const [verDetalle, setVerDetalle] = useState(false);
+  const abrirDetalle = (recorrido) => { setDetalle(recorrido); setVerDetalle(true); };
 
   const [recorridos, setRecorridos] = useState([]);
   const [mostrarModal, setMostrarModal] = useState(false);
@@ -424,8 +423,8 @@ const Recorridos = () => {
                       ) : null}
                       valor={`$${parseFloat(recorrido.costo || 0).toFixed(2)}`}
                       detalle={`${recorrido.vehiculo_descripcion || 'Sin vehículo'} · ${estudiantes} ${estudiantes === 1 ? 'estudiante' : 'estudiantes'}`}
-                      onAbrir={() => handleEdit(recorrido)}
-                      etiquetaAbrir={`Editar el recorrido del ${formatearFecha(recorrido.fecha)}`}
+                      onAbrir={() => abrirDetalle(recorrido)}
+                      etiquetaAbrir={`Ver el recorrido del ${formatearFecha(recorrido.fecha)}`}
                       onBorrar={() => { setRecorridoAEliminar(recorrido); setShowDeleteModal(true); }}
                       etiquetaBorrar={`Eliminar el recorrido del ${formatearFecha(recorrido.fecha)}`}
                     />
@@ -648,6 +647,117 @@ const Recorridos = () => {
 
       </>
       )}
+
+      {esMovil && detalle && (() => {
+        const estudiantes = detalle.ninos || [];
+        const tipo = tipoLabel[detalle.tipo_recorrido] || detalle.tipo_recorrido;
+        const hora = formatearHora(detalle.hora_inicio);
+        const conReparto = detalle.parte_auto !== undefined && detalle.parte_auto !== null;
+        const dinero = (v) => `$${parseFloat(v || 0).toFixed(2)}`;
+        return (
+          <DetalleMovil
+            abierto={verDetalle}
+            onCerrar={() => setVerDetalle(false)}
+            cabecera="Detalle del recorrido"
+            avatar={<RouteIcon size={30} strokeWidth={2} className={detalle.tipo_recorrido === 'llevar' ? 'text-caution' : 'text-positive'} />}
+            nombre={`${tipo} estudiantes`}
+            subtitulo={fechaLarga(detalle.fecha)}
+            cifras={[
+              { clave: 'costo', icono: Wallet, valor: dinero(detalle.costo), etiqueta: 'Costo' },
+              { clave: 'estudiantes', icono: Users, valor: estudiantes.length, etiqueta: 'Estudiantes' },
+              { clave: 'hora', icono: Clock, valor: hora, etiqueta: 'Salida' },
+              conReparto
+                ? { clave: 'auto', icono: HandCoins, valor: dinero(detalle.parte_auto), etiqueta: 'Para el auto' }
+                : { clave: 'tipo', icono: RouteIcon, valor: tipo, etiqueta: 'Tipo' },
+            ]}
+            pestanas={[
+              {
+                clave: 'detalle',
+                etiqueta: 'Detalle',
+                contenido: (
+                  <>
+                    {detalle._pendiente && (
+                      <TextoDetalle>
+                        {detalle._pendiente === 'rechazado'
+                          ? `No se pudo enviar: ${detalle._error || 'el servidor lo rechazó'}.`
+                          : 'Guardado en este teléfono: se enviará solo cuando haya conexión.'}
+                      </TextoDetalle>
+                    )}
+                    <TarjetaDetalle titulo="Horario y vehículo">
+                      <DatosDetalle
+                        datos={[
+                          { icono: CalendarDays, etiqueta: 'Fecha', valor: fechaCorta(detalle.fecha) },
+                          { icono: Clock, etiqueta: 'Salida', valor: hora },
+                          { icono: Bus, etiqueta: 'Vehículo', valor: detalle.vehiculo_descripcion || 'Sin vehículo' },
+                          { icono: Hash, etiqueta: 'Placa', valor: detalle.vehiculo_placa || 'Sin placa' },
+                        ]}
+                      />
+                    </TarjetaDetalle>
+                    {conReparto && (
+                      <TarjetaDetalle titulo="Reparto de lo cobrado">
+                        <DatosDetalle
+                          datos={[
+                            { icono: HandCoins, etiqueta: 'Para el auto', valor: dinero(detalle.parte_auto) },
+                            { icono: Wallet, etiqueta: 'Para el chofer', valor: dinero(detalle.parte_chofer) },
+                          ]}
+                        />
+                      </TarjetaDetalle>
+                    )}
+                  </>
+                ),
+              },
+              {
+                clave: 'estudiantes',
+                etiqueta: `Estudiantes (${estudiantes.length})`,
+                contenido: (
+                  <TarjetaDetalle titulo="Quiénes viajaron">
+                    {estudiantes.length === 0 ? (
+                      <TextoDetalle>Este recorrido no tiene estudiantes.</TextoDetalle>
+                    ) : (
+                      <ul className="space-y-2">
+                        {estudiantes.map((n) => (
+                          <li key={n.nino_id || n.id} className="flex items-center gap-3 rounded-[1rem] bg-[rgb(var(--c-pastel)/0.7)] px-3 py-2.5">
+                            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-surface text-caption font-bold text-[rgb(var(--c-marino))]">
+                              {n.nombre?.charAt(0)}{n.apellidos?.charAt(0)}
+                            </span>
+                            <div className="min-w-0">
+                              <p className="truncate text-footnote font-semibold text-label">{n.nombre} {n.apellidos}</p>
+                              {n.notas && <p className="truncate text-caption text-label-secondary">{n.notas}</p>}
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </TarjetaDetalle>
+                ),
+              },
+              {
+                clave: 'notas',
+                etiqueta: 'Notas',
+                contenido: (
+                  <TarjetaDetalle titulo="Notas">
+                    <TextoDetalle>{detalle.notas || 'Sin notas en este recorrido.'}</TextoDetalle>
+                  </TarjetaDetalle>
+                ),
+              },
+            ]}
+            onEditar={() => handleEdit(detalle)}
+            etiquetaEditar="Editar recorrido"
+            onEliminar={() => { setRecorridoAEliminar(detalle); setShowDeleteModal(true); }}
+            etiquetaEliminar="Eliminar recorrido"
+            compartir={{
+              title: `Recorrido: ${tipo}`,
+              text: [
+                `${fechaLarga(detalle.fecha)} · ${hora}`,
+                `Vehículo: ${detalle.vehiculo_descripcion || 'sin vehículo'}`,
+                `Costo: ${dinero(detalle.costo)}`,
+                estudiantes.length ? `Estudiantes: ${estudiantes.map((n) => `${n.nombre} ${n.apellidos}`).join(', ')}` : null,
+                detalle.notas ? `Notas: ${detalle.notas}` : null,
+              ].filter(Boolean).join('\n'),
+            }}
+          />
+        );
+      })()}
 
       {/* Formulario */}
       <Modal

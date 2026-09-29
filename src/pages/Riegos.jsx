@@ -2,8 +2,9 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import {
   Plus, Droplets, Pencil, Trash2, FileDown, ChevronLeft, ChevronRight,
-  DollarSign, CalendarDays, Lock, CloudOff,
+  DollarSign, CalendarDays, Lock, CloudOff, Clock, CircleCheck,
 } from 'lucide-react';
+import DetalleMovil, { TarjetaDetalle, DatosDetalle, TextoDetalle } from '../components/movil/DetalleMovil';
 import { useEsMovil } from '../hooks/useMediaPreference';
 import SelectorDeMes from '../components/ui/SelectorDeMes';
 import {
@@ -28,7 +29,7 @@ import PageHeader from '../components/ui/PageHeader';
 import StatCard from '../components/ui/StatCard';
 import EmptyState from '../components/ui/EmptyState';
 import CalendarioMes from '../components/ui/CalendarioMes';
-import { MESES, dosDigitos, rangoDelMes, diaDeFecha } from '../lib/fechas';
+import { MESES, dosDigitos, rangoDelMes, diaDeFecha, fechaCorta, fechaLarga } from '../lib/fechas';
 import { crossFade, springSheet } from '../lib/motion';
 
 const DIAS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
@@ -46,6 +47,9 @@ const Riegos = () => {
   const { pendientes, borrar } = usePendientes();
   const reduceMotion = useReducedMotion();
   const esMovil = useEsMovil();
+  // Ficha de detalle del móvil (se conserva al cerrar, para la animación).
+  const [detalle, setDetalle] = useState(null);
+  const [verDetalle, setVerDetalle] = useState(false);
 
   const ahora = new Date();
   const [mes, setMes] = useState(ahora.getMonth() + 1);
@@ -293,8 +297,8 @@ const Riegos = () => {
                       ) : null}
                       valor={dinero.format(parseFloat(riego.costo) || 0)}
                       detalle="Costo del riego"
-                      onAbrir={editable ? () => abrirEdicion(riego) : null}
-                      etiquetaAbrir={`Editar riego del ${etiquetaFecha(riego.fecha)}`}
+                      onAbrir={() => { setDetalle(riego); setVerDetalle(true); }}
+                      etiquetaAbrir={`Ver el riego del ${etiquetaFecha(riego.fecha)}`}
                       onBorrar={editable ? () => { setAEliminar(riego); setShowDeleteModal(true); } : null}
                       etiquetaBorrar={`Eliminar riego del ${etiquetaFecha(riego.fecha)}`}
                     />
@@ -456,6 +460,65 @@ const Riegos = () => {
 
       </>
       )}
+
+      {esMovil && detalle && (() => {
+        const hora = String(detalle.hora).slice(0, 5);
+        const costo = dinero.format(parseFloat(detalle.costo) || 0);
+        const bloqueado = mesCerrado && !detalle._pendiente;
+        return (
+          <DetalleMovil
+            abierto={verDetalle}
+            onCerrar={() => setVerDetalle(false)}
+            cabecera="Detalle del riego"
+            avatar={<Droplets size={30} strokeWidth={2} className="text-info" />}
+            nombre="Riego de césped"
+            subtitulo={fechaLarga(detalle.fecha)}
+            cifras={[
+              { clave: 'costo', icono: DollarSign, valor: costo, etiqueta: 'Costo' },
+              { clave: 'hora', icono: Clock, valor: hora, etiqueta: 'Hora' },
+              { clave: 'dia', icono: CalendarDays, valor: fechaCorta(detalle.fecha).split(' ').slice(0, 2).join(' '), etiqueta: 'Día' },
+            ]}
+            pestanas={[{
+              clave: 'detalle',
+              etiqueta: 'Detalle',
+              contenido: (
+                <>
+                  {detalle._pendiente && (
+                    <TextoDetalle>
+                      {detalle._pendiente === 'rechazado'
+                        ? `No se pudo enviar: ${detalle._error || 'el servidor lo rechazó'}.`
+                        : 'Guardado en este teléfono: se enviará solo cuando haya conexión.'}
+                    </TextoDetalle>
+                  )}
+                  <TarjetaDetalle titulo="Cuándo y cuánto">
+                    <DatosDetalle
+                      datos={[
+                        { icono: CalendarDays, etiqueta: 'Fecha', valor: fechaCorta(detalle.fecha) },
+                        { icono: Clock, etiqueta: 'Hora', valor: hora },
+                        { icono: DollarSign, etiqueta: 'Costo', valor: costo },
+                        {
+                          icono: bloqueado ? Lock : CircleCheck,
+                          etiqueta: 'Mes',
+                          valor: bloqueado ? 'Terminado' : 'Abierto',
+                        },
+                      ]}
+                    />
+                  </TarjetaDetalle>
+                </>
+              ),
+            }]}
+            onEditar={() => abrirEdicion(detalle)}
+            etiquetaEditar="Editar riego"
+            onEliminar={() => { setAEliminar(detalle); setShowDeleteModal(true); }}
+            etiquetaEliminar="Eliminar riego"
+            bloqueado={bloqueado ? `${MESES[mes - 1]} está terminado: no se puede modificar` : null}
+            compartir={{
+              title: 'Riego',
+              text: `${fechaLarga(detalle.fecha)} · ${hora}\nCosto: ${costo}`,
+            }}
+          />
+        );
+      })()}
 
       <RiegoModal
         abierto={mostrarModal}
