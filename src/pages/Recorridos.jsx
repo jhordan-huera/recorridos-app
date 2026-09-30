@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import {
   Plus, RefreshCw, ChevronLeft, ChevronRight, Route as RouteIcon,
-  Clock, Bus, Pencil, Trash2, X, CloudOff, Wallet, Users, HandCoins, CalendarDays, Hash, StickyNote,
+  Clock, Bus, Pencil, Trash2, CloudOff, Wallet, Users, HandCoins, CalendarDays, Hash, StickyNote,
 } from 'lucide-react';
 import { fechaCorta, fechaLarga } from '../lib/fechas';
 import DetalleMovil, { TarjetaDetalle, DatosDetalle, TextoDetalle } from '../components/movil/DetalleMovil';
@@ -14,12 +14,12 @@ import {
   getAllRecorridos, getAllNinos, getAllVehiculos, mensajeDeError, fueBien, mensajeDeRespuesta, esFalloDeRed,
 } from '../services/api';
 import { unirConPendientes, vistaDeRecorrido, pendientesDelMes, nuevoId } from '../lib/pendientes';
+import FormularioRecorrido, { ResumenRecorrido } from '../components/formulario/FormularioRecorrido';
+import { PieDeFormulario } from '../components/formulario/Formulario';
 import Modal from '../components/ui/Modal';
 import ConfirmModal from '../components/ui/ConfirmModal';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
-import Input from '../components/ui/Input';
-import Select from '../components/ui/Select';
 import Badge from '../components/ui/Badge';
 import Skeleton from '../components/ui/Skeleton';
 import CardSkeleton from '../components/ui/CardSkeleton';
@@ -245,25 +245,6 @@ const Recorridos = () => {
     setLoadingForm(false);
   };
 
-  const handleChange = (event) => setFormData({ ...formData, [event.target.name]: event.target.value });
-
-  const agregarNino = (event) => {
-    const ninoId = event.target.value;
-    if (!ninoId) return;
-    const nino = ninos.find((n) => n.id.toString() === ninoId.toString());
-    if (!nino || ninosSeleccionados.some((n) => n.nino_id.toString() === ninoId.toString())) return;
-
-    haptics.tick();
-    setNinosSeleccionados([...ninosSeleccionados, {
-      nino_id: ninoId, nombre: nino.nombre, apellidos: nino.apellidos, notas: '',
-    }]);
-    event.target.value = '';
-  };
-
-  const eliminarNino = (index) => {
-    setNinosSeleccionados(ninosSeleccionados.filter((_, i) => i !== index));
-  };
-
   const handleSubmit = useEnvioUnico(async (event) => {
     event.preventDefault();
     if (!formData.fecha || !formData.hora_inicio || !formData.vehiculo_id) {
@@ -347,10 +328,6 @@ const Recorridos = () => {
       setRecorridoAEliminar(null);
     }
   });
-
-  const ninosDisponibles = (ninos || []).filter(
-    (n) => !ninosSeleccionados.some((sel) => sel.nino_id?.toString() === n.id?.toString())
-  );
 
   return (
     <div className="pb-4">
@@ -767,122 +744,42 @@ const Recorridos = () => {
         );
       })()}
 
-      {/* Formulario */}
+      {/* Formulario: el mismo que el del Resumen (components/formulario) */}
       <Modal
         isOpen={mostrarModal}
         onClose={handleCloseModal}
         title={editando ? 'Editar recorrido' : 'Nuevo recorrido'}
+        description={editando ? 'Cambia lo que necesites y guarda.' : 'Elige el tipo, el vehículo y quién viaja.'}
+        icono={RouteIcon}
+        tono={formData.tipo_recorrido === 'llevar' ? 'caution' : 'positive'}
         size="max-w-2xl"
         footer={
-          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-            <Button variant="secondary" onClick={handleCloseModal}>Cancelar</Button>
-            <Button type="submit" form="form-recorrido" loading={saving} disabled={loadingForm}>
-              {editando ? 'Guardar cambios' : 'Registrar ruta'}
-            </Button>
-          </div>
+          <PieDeFormulario
+            resumen={loadingForm ? null : (
+              <ResumenRecorrido
+                datos={formData} vehiculos={vehiculos} seleccionados={ninosSeleccionados} editando={editando}
+              />
+            )}
+            onCancelar={handleCloseModal}
+            form="form-recorrido"
+            textoEnviar={editando ? 'Guardar cambios' : 'Registrar recorrido'}
+            cargando={saving}
+            deshabilitado={loadingForm}
+          />
         }
       >
-        {loadingForm ? (
-          <div className="space-y-4 py-2">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Skeleton variant="text" className="h-16 w-full" />
-              <Skeleton variant="text" className="h-16 w-full" />
-              <Skeleton variant="text" className="h-16 w-full" />
-              <Skeleton variant="text" className="h-16 w-full" />
-            </div>
-            <Skeleton variant="text" className="h-16 w-full" />
-          </div>
-        ) : (
-          <form id="form-recorrido" onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Input
-                label="Fecha" type="date" name="fecha" value={formData.fecha}
-                onChange={handleChange} required disabled={saving}
-              />
-              <Input
-                label="Hora de salida" type="time" name="hora_inicio" value={formData.hora_inicio}
-                onChange={handleChange} required disabled={saving}
-              />
-              <Select
-                label="Vehículo" name="vehiculo_id" value={formData.vehiculo_id}
-                onChange={handleChange} required disabled={saving}
-              >
-                <option value="">Seleccionar…</option>
-                {vehiculos.map((v) => <option key={v.id} value={v.id}>{v.descripcion}</option>)}
-              </Select>
-              <Select
-                label="Tipo de servicio" name="tipo_recorrido" value={formData.tipo_recorrido}
-                onChange={handleChange} required disabled={saving}
-              >
-                <option value="traer">Traer estudiantes</option>
-                <option value="llevar">Llevar estudiantes</option>
-              </Select>
-            </div>
-
-            <Input
-              label="Notas" name="notas" value={formData.notas} onChange={handleChange}
-              placeholder="Detalles adicionales, cambios en la ruta…" disabled={saving}
-            />
-
-            <div className="border-t border-separator/50 pt-4">
-              <Select
-                label={`Estudiantes asignados (${ninosSeleccionados.length})`}
-                onChange={agregarNino}
-                value=""
-                disabled={saving || ninosDisponibles.length === 0}
-                hint={ninosDisponibles.length === 0 ? 'No quedan estudiantes por asignar' : undefined}
-              >
-                <option value="">Añadir estudiante…</option>
-                {ninosDisponibles.map((n) => (
-                  <option key={n.id} value={n.id}>{n.nombre} {n.apellidos}</option>
-                ))}
-              </Select>
-
-              <div className="scroll-area mt-3 grid max-h-52 grid-cols-1 gap-2 sm:grid-cols-2">
-                <AnimatePresence initial={false}>
-                  {ninosSeleccionados.map((nino, index) => (
-                    <motion.div
-                      key={nino.nino_id}
-                      layout
-                      initial={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.95 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      exit={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.95 }}
-                      transition={reduceMotion ? crossFade : springSnappy}
-                      className="flex items-center justify-between gap-2 rounded-control border
-                                 border-separator/60 bg-surface-secondary p-2 pl-2.5"
-                    >
-                      <div className="flex min-w-0 items-center gap-2.5">
-                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full
-                                         bg-fill/12 text-caption font-semibold text-label-secondary">
-                          {nino.nombre?.charAt(0) || '?'}
-                        </span>
-                        <span className="truncate text-footnote font-medium text-label">
-                          {nino.nombre} {nino.apellidos}
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => eliminarNino(index)}
-                        aria-label={`Quitar a ${nino.nombre}`}
-                        className="tappable shrink-0 rounded-full p-1.5 text-label-tertiary
-                                   transition-colors hover:bg-critical/12 hover:text-critical"
-                      >
-                        <X size={14} strokeWidth={2.4} />
-                      </button>
-                    </motion.div>
-                  ))}
-                </AnimatePresence>
-
-                {ninosSeleccionados.length === 0 && (
-                  <p className="rounded-control border border-dashed border-separator/70 px-4 py-6
-                                text-center text-footnote text-label-tertiary sm:col-span-2">
-                    Todavía no hay estudiantes en esta ruta
-                  </p>
-                )}
-              </div>
-            </div>
-          </form>
-        )}
+        <FormularioRecorrido
+          id="form-recorrido"
+          onSubmit={handleSubmit}
+          datos={formData}
+          onCampo={(campo, valor) => setFormData((antes) => ({ ...antes, [campo]: valor }))}
+          vehiculos={vehiculos}
+          ninos={ninos}
+          seleccionados={ninosSeleccionados}
+          onSeleccion={setNinosSeleccionados}
+          deshabilitado={saving}
+          cargando={loadingForm}
+        />
       </Modal>
 
       <ConfirmModal

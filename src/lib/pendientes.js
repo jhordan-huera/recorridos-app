@@ -39,7 +39,7 @@ const MOSTRAR_ENVIADOS_MS = 2 * 60_000;
  * El costo que pone la base de datos a un riego sin costo. Aquí solo sirve
  * para enseñar un riego que aún no se ha enviado; el alta sigue sin mandarlo.
  */
-const COSTO_RIEGO_POR_DEFECTO = 1;
+export const COSTO_RIEGO_POR_DEFECTO = 1;
 
 const CREAR = { riego: createRiego, recorrido: createRecorrido };
 const ACTUALIZAR = { riego: updateRiego, recorrido: updateRecorrido };

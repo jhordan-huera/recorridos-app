@@ -57,3 +57,11 @@ export const fechaLarga = (fecha) => {
   const texto = `${DIAS_LARGOS[p.dia]}, ${p.d} de ${MESES[p.m - 1].toLowerCase()} de ${p.a}`;
   return texto.charAt(0).toUpperCase() + texto.slice(1);
 };
+
+/** La fecha `YYYY-MM-DD` que queda `dias` días antes o después de otra. */
+export const sumarDias = (fecha, dias) => {
+  const p = partes(fecha);
+  if (!p) return fecha;
+  const d = new Date(p.a, p.m - 1, p.d + dias);
+  return `${d.getFullYear()}-${dosDigitos(d.getMonth() + 1)}-${dosDigitos(d.getDate())}`;
+};

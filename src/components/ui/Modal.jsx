@@ -189,18 +189,33 @@ const Dialog = ({ isOpen, onClose, onClosed, dismissible, size, origin, panelRef
   );
 };
 
+/** Color del icono de la cabecera: el del tipo de registro que se crea. */
+const TONOS_ICONO = {
+  accent: 'bg-accent/12 text-accent',
+  positive: 'bg-positive/14 text-positive',
+  caution: 'bg-caution/16 text-caution',
+  info: 'bg-info/14 text-info',
+  brand: 'bg-brand/14 text-brand',
+};
+
 /**
  * Capa modal.
  *
  * Sheet arrastrable en táctil, diálogo centrado en escritorio. En ambos casos
  * entra y sale por el mismo camino, y el fondo se atenúa y retrocede para
  * decir que esto es una tarea que bloquea.
+ *
+ * `icono` (un componente de lucide) pone a la izquierda del título un icono
+ * en su círculo de color, del `tono` indicado: dice de un vistazo qué se está
+ * registrando.
  */
 const Modal = ({
   isOpen,
   onClose,
   title,
   description,
+  icono: Icono = null,
+  tono = 'accent',
   children,
   footer = null,
   size = 'max-w-lg',
@@ -267,9 +282,19 @@ const Modal = ({
   const content = (
     <>
       <div className="flex shrink-0 items-start justify-between gap-4 px-5 pb-3 pt-4 sm:px-6 sm:pt-5">
-        <div className="min-w-0">
-          {title && <h2 className="text-title3 font-semibold text-label">{title}</h2>}
-          {description && <p className="mt-1 text-subhead text-label-secondary">{description}</p>}
+        <div className="flex min-w-0 items-center gap-3">
+          {Icono && (
+            <span
+              aria-hidden="true"
+              className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-[0.9rem] ${TONOS_ICONO[tono] || TONOS_ICONO.accent}`}
+            >
+              <Icono size={21} strokeWidth={2.1} />
+            </span>
+          )}
+          <div className="min-w-0">
+            {title && <h2 className="text-title3 font-semibold text-label">{title}</h2>}
+            {description && <p className="mt-0.5 text-footnote text-label-secondary">{description}</p>}
+          </div>
         </div>
         {dismissible && (
           <button

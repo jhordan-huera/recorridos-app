@@ -11,6 +11,7 @@ import { useAlert } from '../context/AlertContext';
 import {
   createNino, deleteNino, updateNino, getAllNinos, mensajeDeError, fueBien, mensajeDeRespuesta,
 } from '../services/api';
+import { PieDeFormulario } from '../components/formulario/Formulario';
 import Modal from '../components/ui/Modal';
 import ConfirmModal from '../components/ui/ConfirmModal';
 import Button from '../components/ui/Button';
@@ -440,16 +441,18 @@ const Ninos = () => {
         isOpen={mostrarModal}
         onClose={handleCloseModal}
         title={editMode ? 'Editar estudiante' : 'Nuevo estudiante'}
-        description={editMode ? undefined : 'Los campos marcados son obligatorios.'}
+        description={editMode ? 'Cambia lo que necesites y guarda.' : 'Nombre y apellidos son obligatorios.'}
+        icono={GraduationCap}
+        tono="brand"
         size="max-w-xl"
-        footer={
-          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-            <Button variant="secondary" onClick={handleCloseModal}>Cancelar</Button>
-            <Button type="submit" form="form-nino" loading={saving}>
-              {editMode ? 'Guardar cambios' : 'Registrar'}
-            </Button>
-          </div>
-        }
+        footer={(
+          <PieDeFormulario
+            onCancelar={handleCloseModal}
+            form="form-nino"
+            textoEnviar={editMode ? 'Guardar cambios' : 'Registrar estudiante'}
+            cargando={saving}
+          />
+        )}
       >
         <form id="form-nino" onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

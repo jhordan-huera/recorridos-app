@@ -12,6 +12,7 @@ import { useAlert } from '../context/AlertContext';
 import {
   createVehiculo, deleteVehiculo, updateVehiculo, getAllVehiculos, mensajeDeError, fueBien, mensajeDeRespuesta,
 } from '../services/api';
+import { PieDeFormulario } from '../components/formulario/Formulario';
 import Modal from '../components/ui/Modal';
 import ConfirmModal from '../components/ui/ConfirmModal';
 import Button from '../components/ui/Button';
@@ -550,15 +551,18 @@ const Vehiculos = () => {
         isOpen={mostrarModal}
         onClose={handleCloseModal}
         title={editMode ? 'Editar vehículo' : 'Nuevo vehículo'}
+        description={editMode ? 'Cambia lo que necesites y guarda.' : 'Su tarifa se usa en cada recorrido.'}
+        icono={Bus}
+        tono="caution"
         size="max-w-xl"
-        footer={
-          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-            <Button variant="secondary" onClick={handleCloseModal}>Cancelar</Button>
-            <Button type="submit" form="form-vehiculo" loading={saving}>
-              {editMode ? 'Guardar cambios' : 'Registrar'}
-            </Button>
-          </div>
-        }
+        footer={(
+          <PieDeFormulario
+            onCancelar={handleCloseModal}
+            form="form-vehiculo"
+            textoEnviar={editMode ? 'Guardar cambios' : 'Registrar vehículo'}
+            cargando={saving}
+          />
+        )}
       >
         <form id="form-vehiculo" onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
