@@ -2,7 +2,7 @@ import { PENDIENTES, todos, guardar, borrar, pedirQueNoSeBorre } from './almacen
 import { estaEnLinea } from './conexion';
 import {
   createRiego, createRecorrido, updateRiego, updateRecorrido, deleteRiego, deleteRecorrido,
-  mensajeDeError, esFalloDeRed,
+  mensajeDeError, esFalloDeRed, getAccessToken, getCurrentUserInfo,
 } from '../services/api';
 
 /**
@@ -39,7 +39,7 @@ const MOSTRAR_ENVIADOS_MS = 2 * 60_000;
  * El costo que pone la base de datos a un riego sin costo. Aquí solo sirve
  * para enseñar un riego que aún no se ha enviado; el alta sigue sin mandarlo.
  */
-const COSTO_RIEGO_POR_DEFECTO = 1;
+export const COSTO_RIEGO_POR_DEFECTO = 1;
 
 const CREAR = { riego: createRiego, recorrido: createRecorrido };
 const ACTUALIZAR = { riego: updateRiego, recorrido: updateRecorrido };
@@ -137,9 +137,13 @@ const opcionesDeEnvio = () => ({
  * Devuelve `{ respuesta }` si llegó o `{ guardadoSinConexion: true }` si quedó
  * guardada. Un error del servidor (400, 409…) se lanza igual que siempre: eso
  * no es falta de conexión y hay que enseñarlo en el formulario.
+ *
+ * `id`: el que el formulario generó al abrirse. Si el mismo formulario se
+ * envía dos veces, las dos llevan el mismo id y el servidor guarda una sola.
+ * Sin él se genera uno aquí.
  */
-export const registrar = async ({ userId, tipo, datos, vista }) => {
-  const id = nuevoId();
+export const registrar = async ({ userId, tipo, datos, vista, id: idDelFormulario }) => {
+  const id = idDelFormulario || nuevoId();
   const guardarAqui = async () => {
     await encolar({ id, userId, tipo, datos, vista });
     return { guardadoSinConexion: true, id };
@@ -263,6 +267,13 @@ const enviarUno = async (item) => {
 };
 
 /**
+ * La sesión guardada, que es la que firma las peticiones, es la del dueño de
+ * la cola. Una pestaña vieja de otra cuenta en el mismo teléfono enviaba lo
+ * suyo con la sesión de quien hubiera entrado después, y quedaba a su nombre.
+ */
+const sesionEsDe = (userId) => Boolean(getAccessToken()) && String(getCurrentUserInfo().id ?? '') === String(userId);
+
+/**
  * Envía todo lo pendiente de una cuenta, en el orden en que se registró.
  * Si ya hay un envío en marcha devuelve ese mismo: nunca van dos a la vez.
  *
@@ -280,6 +291,8 @@ export const enviarPendientes = (userId) => {
 
     publicar({ enviando: true });
     for (const item of cola) {
+      // Se comprueba antes de cada envío: la otra cuenta pudo entrar a mitad.
+      if (!sesionEsDe(userId)) break;
       // Pudo descartarse o editarse mientras se enviaba el anterior.
       const actual = foto.items.find((i) => i.id === item.id);
       if (actual?.estado !== 'pendiente') continue;

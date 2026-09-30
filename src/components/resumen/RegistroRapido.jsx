@@ -1,10 +1,12 @@
-import React, { useEffect, useId, useState } from 'react';
+import React, { useEffect, useId, useRef, useState } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
 import {
   Route as RouteIcon, Droplets, Bus, CalendarDays, Clock, DollarSign, Plus, ArrowRight,
 } from 'lucide-react';
 import { hoyISO, horaActual } from '../../lib/fechas';
+import { nuevoId } from '../../lib/pendientes';
 import { springSnappy } from '../../lib/motion';
+import { useEnvioUnico } from '../../hooks/useEnvioUnico';
 
 /**
  * Un campo de la tarjeta: icono, etiqueta pequeña encima y el valor debajo,
@@ -90,6 +92,10 @@ const RegistroRapido = ({
   const [horaTocada, setHoraTocada] = useState(false);
   const [costo, setCosto] = useState('');
   const [ocupado, setOcupado] = useState(false);
+  // Id del próximo riego: el mismo mientras no se registre, para que un
+  // envío repetido no lo duplique en el servidor.
+  const idRiego = useRef(null);
+  if (idRiego.current === null) idRiego.current = nuevoId();
   const [aviso, setAviso] = useState('');
   const reduceMotion = useReducedMotion();
 
@@ -133,7 +139,7 @@ const RegistroRapido = ({
     reiniciarHora();
   };
 
-  const registrarRiego = async () => {
+  const registrarRiego = useEnvioUnico(async () => {
     if (!fecha || !hora) {
       setAviso('Pon la fecha y la hora');
       return;
@@ -143,13 +149,14 @@ const RegistroRapido = ({
     const datos = { fecha, hora };
     // Vacío: lo pone la base de datos ($1.00), como en el formulario de riegos.
     if (String(costo).trim() !== '') datos.costo = parseFloat(costo);
-    const bien = await onRiego(datos);
+    const bien = await onRiego(datos, idRiego.current);
     setOcupado(false);
     if (bien) {
+      idRiego.current = nuevoId();
       setCosto('');
       reiniciarHora();
     }
-  };
+  });
 
   const pestanas = [
     puedeRecorridos && { clave: 'recorrido', etiqueta: 'Recorridos', icono: RouteIcon },

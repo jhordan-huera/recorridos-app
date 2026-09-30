@@ -13,9 +13,11 @@ import { getCurrentUser } from '../services/api';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
+import InputContrasena from '../components/ui/InputContrasena';
 import ThemeToggle from '../components/ui/ThemeToggle';
 import ConfirmModal from '../components/ui/ConfirmModal';
 import { crossFade, springSheet, springSnappy } from '../lib/motion';
+import { useEnvioUnico } from '../hooks/useEnvioUnico';
 
 const extractName = (u) => {
   if (!u) return null;
@@ -178,7 +180,7 @@ const Profile = () => {
 
   const handleChange = (event) => setFormData({ ...formData, [event.target.name]: event.target.value });
 
-  const handleSubmitPerfil = async (event) => {
+  const handleSubmitPerfil = useEnvioUnico(async (event) => {
     event.preventDefault();
     setLoading(true);
     const resultado = await updateProfile({ nombre: formData.nombre, usuario: formData.usuario });
@@ -192,13 +194,13 @@ const Profile = () => {
     } else {
       showAlert('error', resultado.error);
     }
-  };
+  });
 
   /**
    * Cambio de contraseña. Exige la actual (el servidor la verifica) y al
    * terminar cierra TODAS las sesiones, así que hay que volver a entrar.
    */
-  const handleSubmitPassword = async (event) => {
+  const handleSubmitPassword = useEnvioUnico(async (event) => {
     event.preventDefault();
 
     if (formData.password !== formData.confirmPassword) {
@@ -221,7 +223,7 @@ const Profile = () => {
     } else {
       showAlert('error', resultado.error);
     }
-  };
+  });
 
   // Las subvistas entran desde la derecha y se van por la derecha: si algo
   // desaparece por un lado, se espera que vuelva a aparecer por ahí.
@@ -278,20 +280,20 @@ const Profile = () => {
       </div>
 
       <form onSubmit={handleSubmitPassword} className="space-y-4">
-        <Input
-          label="Contraseña actual" name="passwordActual" type="password" icon={Lock}
+        <InputContrasena
+          label="Contraseña actual" name="passwordActual" icon={Lock}
           autoComplete="current-password"
           value={formData.passwordActual} onChange={handleChange}
           placeholder="••••••••" required
         />
-        <Input
-          label="Nueva contraseña" name="password" type="password" icon={KeyRound}
+        <InputContrasena
+          label="Nueva contraseña" name="password" icon={KeyRound}
           autoComplete="new-password"
           value={formData.password} onChange={handleChange}
           placeholder="••••••••" required minLength={8} hint="Mínimo 8 caracteres"
         />
-        <Input
-          label="Confirmar contraseña" name="confirmPassword" type="password" icon={KeyRound}
+        <InputContrasena
+          label="Confirmar contraseña" name="confirmPassword" icon={KeyRound}
           autoComplete="new-password"
           value={formData.confirmPassword} onChange={handleChange}
           placeholder="••••••••" required

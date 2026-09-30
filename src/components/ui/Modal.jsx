@@ -189,18 +189,33 @@ const Dialog = ({ isOpen, onClose, onClosed, dismissible, size, origin, panelRef
   );
 };
 
+/** Color del icono de la cabecera: el del tipo de registro que se crea. */
+const TONOS_ICONO = {
+  accent: 'bg-accent/12 text-accent',
+  positive: 'bg-positive/14 text-positive',
+  caution: 'bg-caution/16 text-caution',
+  info: 'bg-info/14 text-info',
+  brand: 'bg-brand/14 text-brand',
+};
+
 /**
  * Capa modal.
  *
  * Sheet arrastrable en táctil, diálogo centrado en escritorio. En ambos casos
  * entra y sale por el mismo camino, y el fondo se atenúa y retrocede para
  * decir que esto es una tarea que bloquea.
+ *
+ * `icono` (un componente de lucide) pone a la izquierda del título un icono
+ * en su círculo de color, del `tono` indicado: dice de un vistazo qué se está
+ * registrando.
  */
 const Modal = ({
   isOpen,
   onClose,
   title,
   description,
+  icono: Icono = null,
+  tono = 'accent',
   children,
   footer = null,
   size = 'max-w-lg',
@@ -212,6 +227,10 @@ const Modal = ({
   // `mounted` sobrevive a que `isOpen` pase a false: el nodo sigue en el DOM
   // durante la salida.
   const [mounted, setMounted] = useState(isOpen);
+  // El contenido ya pasó por debajo de la cabecera: entonces lleva una raya
+  // que la separa, como en iOS. Sin ella, un campo a medio subir parecía
+  // cortado por la cabecera.
+  const [desplazado, setDesplazado] = useState(false);
   const panelRef = useRef(null);
   const originRef = useRef('center center');
 
@@ -260,16 +279,53 @@ const Modal = ({
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [mounted, dismissible, onClose]);
 
+  useEffect(() => {
+    if (!mounted) setDesplazado(false);
+  }, [mounted]);
+
   const handleClosed = useCallback(() => setMounted(false), []);
 
   if (!mounted) return null;
 
+  const esHoja = isTouch && !reduceMotion;
+
+  // Al entrar en un campo que asoma a medias bajo la cabecera o el pie, lo
+  // sube o baja lo justo para verlo entero, con su etiqueta.
+  const mostrarCampo = (event) => {
+    if (!event.target.matches('input, select, textarea')) return;
+    const area = event.currentTarget;
+    const campo = event.target.closest('[data-campo]') || event.target;
+    const margen = 12;
+    const { top, bottom } = campo.getBoundingClientRect();
+    const limites = area.getBoundingClientRect();
+    const mover = top < limites.top + margen ? top - limites.top - margen
+      : bottom > limites.bottom - margen ? bottom - limites.bottom + margen
+        : 0;
+    if (mover !== 0) area.scrollBy({ top: mover, behavior: reduceMotion ? 'auto' : 'smooth' });
+  };
+
   const content = (
     <>
-      <div className="flex shrink-0 items-start justify-between gap-4 px-5 pb-3 pt-4 sm:px-6 sm:pt-5">
-        <div className="min-w-0">
-          {title && <h2 className="text-title3 font-semibold text-label">{title}</h2>}
-          {description && <p className="mt-1 text-subhead text-label-secondary">{description}</p>}
+      <div
+        className={`flex shrink-0 items-start justify-between gap-4 border-b px-5 pb-3 transition-colors duration-[var(--t-fast)] sm:px-6 ${
+          esHoja ? 'pt-2' : 'pt-4 sm:pt-5'
+        } ${desplazado ? 'border-separator/60' : 'border-transparent'}`}
+      >
+        <div className="flex min-w-0 items-center gap-3">
+          {Icono && (
+            <span
+              aria-hidden="true"
+              className={`flex shrink-0 items-center justify-center ${
+                esHoja ? 'h-10 w-10 rounded-[0.8rem]' : 'h-11 w-11 rounded-[0.9rem]'
+              } ${TONOS_ICONO[tono] || TONOS_ICONO.accent}`}
+            >
+              <Icono size={esHoja ? 19 : 21} strokeWidth={2.1} />
+            </span>
+          )}
+          <div className="min-w-0">
+            {title && <h2 className="text-title3 font-semibold text-label">{title}</h2>}
+            {description && <p className="mt-0.5 text-footnote text-label-secondary">{description}</p>}
+          </div>
         </div>
         {dismissible && (
           <button
@@ -284,10 +340,16 @@ const Modal = ({
         )}
       </div>
 
-      <div className="scroll-area flex-1 px-5 pb-5 pt-1 sm:px-6 sm:pb-6">{children}</div>
+      <div
+        className="scroll-area flex-1 px-5 pb-5 pt-1 sm:px-6 sm:pb-6"
+        onScroll={(event) => setDesplazado(event.currentTarget.scrollTop > 2)}
+        onFocus={mostrarCampo}
+      >
+        {children}
+      </div>
 
       {footer && (
-        <div className="shrink-0 border-t border-separator/60 bg-surface-secondary px-5 py-4 sm:px-6">
+        <div className={`shrink-0 border-t border-separator/60 bg-surface-secondary px-5 sm:px-6 ${esHoja ? 'py-3' : 'py-4'}`}>
           {footer}
         </div>
       )}
@@ -296,7 +358,7 @@ const Modal = ({
 
   return createPortal(
     <div className="fixed inset-0 z-50" role="presentation">
-      {isTouch && !reduceMotion ? (
+      {esHoja ? (
         <Sheet
           isOpen={isOpen}
           onClose={onClose}

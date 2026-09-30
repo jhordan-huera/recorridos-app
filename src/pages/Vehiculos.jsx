@@ -12,6 +12,7 @@ import { useAlert } from '../context/AlertContext';
 import {
   createVehiculo, deleteVehiculo, updateVehiculo, getAllVehiculos, mensajeDeError, fueBien, mensajeDeRespuesta,
 } from '../services/api';
+import { PieDeFormulario } from '../components/formulario/Formulario';
 import Modal from '../components/ui/Modal';
 import ConfirmModal from '../components/ui/ConfirmModal';
 import Button from '../components/ui/Button';
@@ -31,6 +32,7 @@ import { useEsMovil } from '../hooks/useMediaPreference';
 import {
   CabeceraMovil, BuscadorMovil, CifrasMovil, TarjetaMovil, AvatarMovil, InsigniaMovil,
 } from '../components/movil/Movil';
+import { useEnvioUnico } from '../hooks/useEnvioUnico';
 
 const emptyForm = {
   tipo: 'propio', descripcion: '', placa: '', capacidad: '', costo_por_recorrido: '',
@@ -111,7 +113,7 @@ const Vehiculos = () => {
     setMostrarModal(false);
   };
 
-  const handleSubmit = async (event) => {
+  const handleSubmit = useEnvioUnico(async (event) => {
     event.preventDefault();
     if (!formData.descripcion || !formData.costo_por_recorrido) {
       showAlert('warning', 'La descripción y el costo son obligatorios');
@@ -160,9 +162,9 @@ const Vehiculos = () => {
     } finally {
       setSaving(false);
     }
-  };
+  });
 
-  const confirmDelete = async () => {
+  const confirmDelete = useEnvioUnico(async () => {
     if (!vehiculoAEliminar) return;
     setSaving(true);
     try {
@@ -180,7 +182,7 @@ const Vehiculos = () => {
       setShowDeleteModal(false);
       setVehiculoAEliminar(null);
     }
-  };
+  });
 
   const handleEdit = (vehiculo) => {
     setEditMode(true);
@@ -549,15 +551,18 @@ const Vehiculos = () => {
         isOpen={mostrarModal}
         onClose={handleCloseModal}
         title={editMode ? 'Editar vehículo' : 'Nuevo vehículo'}
+        description={editMode ? 'Cambia lo que necesites y guarda.' : 'Su tarifa se usa en cada recorrido.'}
+        icono={Bus}
+        tono="caution"
         size="max-w-xl"
-        footer={
-          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-            <Button variant="secondary" onClick={handleCloseModal}>Cancelar</Button>
-            <Button type="submit" form="form-vehiculo" loading={saving}>
-              {editMode ? 'Guardar cambios' : 'Registrar'}
-            </Button>
-          </div>
-        }
+        footer={(
+          <PieDeFormulario
+            onCancelar={handleCloseModal}
+            form="form-vehiculo"
+            textoEnviar={editMode ? 'Guardar cambios' : 'Registrar vehículo'}
+            cargando={saving}
+          />
+        )}
       >
         <form id="form-vehiculo" onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import {
   Plus, RefreshCw, Users as UsersIcon, ShieldCheck, Pencil, KeyRound, Trash2,
-  AlertTriangle, Route as RouteIcon, Droplets,
+  AlertTriangle, UserPlus, UserPen,
 } from 'lucide-react';
 import {
   deleteUser, createUser, updateUser, getAllUsers, resetUserPassword, mensajeDeError, fueBien, mensajeDeRespuesta,
@@ -12,9 +12,8 @@ import { useAlert } from '../context/AlertContext';
 import ConfirmModal from '../components/ui/ConfirmModal';
 import Modal from '../components/ui/Modal';
 import Button from '../components/ui/Button';
-import Input from '../components/ui/Input';
-import Select from '../components/ui/Select';
-import Switch from '../components/ui/Switch';
+import FormularioUsuario, { ResumenUsuario, CampoContrasena } from '../components/formulario/FormularioUsuario';
+import { PieDeFormulario } from '../components/formulario/Formulario';
 import Card from '../components/ui/Card';
 import Badge from '../components/ui/Badge';
 import Skeleton from '../components/ui/Skeleton';
@@ -25,6 +24,7 @@ import EmptyState from '../components/ui/EmptyState';
 import SearchField from '../components/ui/SearchField';
 import { crossFade, springSheet } from '../lib/motion';
 import PestanasAdmin from '../components/PestanasAdmin';
+import { useEnvioUnico } from '../hooks/useEnvioUnico';
 
 const getInitials = (name) => {
   if (!name) return '??';
@@ -85,7 +85,7 @@ const Users = () => {
     setShowDeleteModal(true);
   };
 
-  const confirmDelete = async () => {
+  const confirmDelete = useEnvioUnico(async () => {
     try {
       setEditing(true);
       await deleteUser(selectedUser.id);
@@ -98,9 +98,9 @@ const Users = () => {
       setShowDeleteModal(false);
       setSelectedUser(null);
     }
-  };
+  });
 
-  const handleCreateUser = async (event) => {
+  const handleCreateUser = useEnvioUnico(async (event) => {
     event.preventDefault();
     if (!createFormData.nombre || !createFormData.usuario || !createFormData.password) {
       showAlert('warning', 'Completa todos los campos obligatorios');
@@ -127,12 +127,12 @@ const Users = () => {
     } finally {
       setCreating(false);
     }
-  };
+  });
 
-  const handleEditUser = async (event) => {
+  const handleEditUser = useEnvioUnico(async (event) => {
     event.preventDefault();
     if (!editFormData.nombre || !editFormData.usuario) {
-      showAlert('warning', 'El nombre y el correo son obligatorios');
+      showAlert('warning', 'El nombre y el usuario son obligatorios');
       return;
     }
 
@@ -152,9 +152,9 @@ const Users = () => {
     } finally {
       setEditing(false);
     }
-  };
+  });
 
-  const handlePasswordReset = async (event) => {
+  const handlePasswordReset = useEnvioUnico(async (event) => {
     event.preventDefault();
     if (passwordFormData.newPassword.length < 8) {
       showAlert('warning', 'La contraseña debe tener al menos 8 caracteres');
@@ -177,7 +177,7 @@ const Users = () => {
     } finally {
       setEditing(false);
     }
-  };
+  });
 
   const openEditForm = (user) => {
     setSelectedUser(user);
@@ -378,156 +378,58 @@ const Users = () => {
         type="danger"
       />
 
-      {/* Crear */}
+      {/* Crear y editar: el mismo formulario (components/formulario) */}
       <Modal
         isOpen={showCreateForm}
         onClose={() => setShowCreateForm(false)}
         title="Nuevo usuario"
-        size="max-w-lg"
-        footer={
-          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-            <Button variant="secondary" onClick={() => setShowCreateForm(false)}>Cancelar</Button>
-            <Button type="submit" form="form-crear-usuario" loading={creating}>Crear usuario</Button>
-          </div>
-        }
+        description="La cuenta con la que esa persona entrará a Bitácora."
+        icono={UserPlus}
+        size="max-w-xl"
+        footer={(
+          <PieDeFormulario
+            resumen={<ResumenUsuario datos={createFormData} />}
+            onCancelar={() => setShowCreateForm(false)}
+            form="form-crear-usuario"
+            textoEnviar="Crear usuario"
+            cargando={creating}
+          />
+        )}
       >
-        <form id="form-crear-usuario" onSubmit={handleCreateUser} className="space-y-4">
-          <Input
-            label="Nombre completo" placeholder="Ana García" value={createFormData.nombre}
-            onChange={(event) => setCreateFormData({ ...createFormData, nombre: event.target.value })}
-            required autoFocus
-          />
-          <Input
-            label="Usuario" type="text" placeholder="ana.garcia"
-            autoCapitalize="none" spellCheck={false}
-            value={createFormData.usuario}
-            onChange={(event) => setCreateFormData({ ...createFormData, usuario: event.target.value })}
-            required minLength={3}
-            hint="Con lo que entrará. No hace falta que sea un correo."
-          />
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Input
-              label="Contraseña" type="password" placeholder="••••••"
-              value={createFormData.password}
-              onChange={(event) => setCreateFormData({ ...createFormData, password: event.target.value })}
-              required minLength={8} hint="Mínimo 8 caracteres"
-            />
-            <Select
-              label="Rol" value={createFormData.rol}
-              onChange={(event) => setCreateFormData({ ...createFormData, rol: event.target.value })}
-            >
-              <option value="usuario">Usuario</option>
-              <option value="admin">Administrador</option>
-            </Select>
-          </div>
-
-          {/* Permisos. Un administrador entra a todo por definición, así que
-              los interruptores se apagan visualmente en lugar de mentir
-              diciendo que se le puede cerrar un módulo. */}
-          <fieldset className="space-y-2.5">
-            <legend className="mb-2 text-footnote font-medium text-label-secondary">
-              Qué puede usar
-            </legend>
-            {createFormData.rol === 'admin' ? (
-              <p className="rounded-control border border-separator/50 bg-surface-secondary p-3.5 text-footnote text-label-secondary">
-                Un administrador entra a todos los módulos y además gestiona las cuentas.
-              </p>
-            ) : (
-              <>
-                <Switch
-                  icon={RouteIcon}
-                  label="Recorridos"
-                  description="Incluye estudiantes y vehículos"
-                  checked={createFormData.puede_recorridos}
-                  onChange={(valor) => setCreateFormData({ ...createFormData, puede_recorridos: valor })}
-                />
-                <Switch
-                  icon={Droplets}
-                  label="Riegos"
-                  description="Registro de riegos de césped"
-                  checked={createFormData.puede_riegos}
-                  onChange={(valor) => setCreateFormData({ ...createFormData, puede_riegos: valor })}
-                />
-                {!createFormData.puede_recorridos && !createFormData.puede_riegos && (
-                  <p className="text-footnote text-caution">
-                    Sin ningún módulo, la cuenta solo podrá ver su perfil.
-                  </p>
-                )}
-              </>
-            )}
-          </fieldset>
-        </form>
+        <FormularioUsuario
+          id="form-crear-usuario"
+          onSubmit={handleCreateUser}
+          datos={createFormData}
+          onCampo={(campo, valor) => setCreateFormData((antes) => ({ ...antes, [campo]: valor }))}
+          conContrasena
+          deshabilitado={creating}
+        />
       </Modal>
 
-      {/* Editar */}
       <Modal
         isOpen={showEditForm}
         onClose={() => setShowEditForm(false)}
         title="Editar usuario"
-        size="max-w-lg"
-        footer={
-          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-            <Button variant="secondary" onClick={() => setShowEditForm(false)}>Cancelar</Button>
-            <Button type="submit" form="form-editar-usuario" loading={editing}>Guardar cambios</Button>
-          </div>
-        }
+        description={selectedUser ? `Cuenta de ${selectedUser.nombre}.` : undefined}
+        icono={UserPen}
+        size="max-w-xl"
+        footer={(
+          <PieDeFormulario
+            resumen={<ResumenUsuario datos={editFormData} />}
+            onCancelar={() => setShowEditForm(false)}
+            form="form-editar-usuario"
+            textoEnviar="Guardar cambios"
+            cargando={editing}
+          />
+        )}
       >
-        <form id="form-editar-usuario" onSubmit={handleEditUser} className="space-y-4">
-          <Input
-            label="Nombre completo" value={editFormData.nombre}
-            onChange={(event) => setEditFormData({ ...editFormData, nombre: event.target.value })}
-            required autoFocus
-          />
-          <Input
-            label="Usuario" type="text" value={editFormData.usuario}
-            autoCapitalize="none" spellCheck={false}
-            onChange={(event) => setEditFormData({ ...editFormData, usuario: event.target.value })}
-            required minLength={3}
-          />
-          <Select
-            label="Rol" value={editFormData.rol}
-            onChange={(event) => setEditFormData({ ...editFormData, rol: event.target.value })}
-          >
-            <option value="usuario">Usuario</option>
-            <option value="admin">Administrador</option>
-          </Select>
-
-          {/* Permisos. Un administrador entra a todo por definición, así que
-              los interruptores se apagan visualmente en lugar de mentir
-              diciendo que se le puede cerrar un módulo. */}
-          <fieldset className="space-y-2.5">
-            <legend className="mb-2 text-footnote font-medium text-label-secondary">
-              Qué puede usar
-            </legend>
-            {editFormData.rol === 'admin' ? (
-              <p className="rounded-control border border-separator/50 bg-surface-secondary p-3.5 text-footnote text-label-secondary">
-                Un administrador entra a todos los módulos y además gestiona las cuentas.
-              </p>
-            ) : (
-              <>
-                <Switch
-                  icon={RouteIcon}
-                  label="Recorridos"
-                  description="Incluye estudiantes y vehículos"
-                  checked={editFormData.puede_recorridos}
-                  onChange={(valor) => setEditFormData({ ...editFormData, puede_recorridos: valor })}
-                />
-                <Switch
-                  icon={Droplets}
-                  label="Riegos"
-                  description="Registro de riegos de césped"
-                  checked={editFormData.puede_riegos}
-                  onChange={(valor) => setEditFormData({ ...editFormData, puede_riegos: valor })}
-                />
-                {!editFormData.puede_recorridos && !editFormData.puede_riegos && (
-                  <p className="text-footnote text-caution">
-                    Sin ningún módulo, la cuenta solo podrá ver su perfil.
-                  </p>
-                )}
-              </>
-            )}
-          </fieldset>
-        </form>
+        <FormularioUsuario
+          id="form-editar-usuario"
+          onSubmit={handleEditUser}
+          datos={editFormData}
+          onCampo={(campo, valor) => setEditFormData((antes) => ({ ...antes, [campo]: valor }))}
+          deshabilitado={editing}
+        />
       </Modal>
 
       {/* Restablecer contraseña */}
@@ -535,29 +437,36 @@ const Users = () => {
         isOpen={showPasswordModal}
         onClose={() => { setShowPasswordModal(false); setSelectedUser(null); }}
         title="Restablecer contraseña"
+        description={selectedUser ? `Cuenta de ${selectedUser.nombre}.` : undefined}
+        icono={KeyRound}
+        tono="caution"
         size="max-w-md"
-        footer={
-          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-            <Button variant="secondary" onClick={() => setShowPasswordModal(false)}>Cancelar</Button>
-            <Button type="submit" form="form-password" loading={editing}>Restablecer</Button>
-          </div>
-        }
+        footer={(
+          <PieDeFormulario
+            onCancelar={() => setShowPasswordModal(false)}
+            form="form-password"
+            textoEnviar="Restablecer"
+            cargando={editing}
+          />
+        )}
       >
-        <form id="form-password" onSubmit={handlePasswordReset} className="space-y-4">
+        <form id="form-password" onSubmit={handlePasswordReset} className="space-y-4" noValidate autoComplete="off">
           {/* Se avisa ANTES del problema, no después: quien lo haga debe saber
               que tiene que comunicárselo a la persona afectada. */}
-          <div className="flex items-start gap-3 rounded-control border border-caution/25 bg-caution/10 p-3.5">
+          <div className="flex items-start gap-3 rounded-[1.1rem] border border-caution/25 bg-caution/10 p-3.5">
             <AlertTriangle size={18} strokeWidth={2} className="mt-px shrink-0 text-caution" />
             <p className="text-footnote leading-relaxed text-label-secondary">
               Vas a cambiar la contraseña de <strong className="font-semibold text-label">{selectedUser?.nombre}</strong>.
-              Tendrás que comunicársela para que pueda volver a entrar.
+              Se cerrarán sus sesiones y tendrás que comunicársela para que pueda volver a entrar.
             </p>
           </div>
 
-          <Input
-            label="Nueva contraseña" type="password" value={passwordFormData.newPassword}
-            onChange={(event) => setPasswordFormData({ newPassword: event.target.value })}
-            placeholder="••••••" minLength={8} required autoFocus hint="Mínimo 8 caracteres"
+          <CampoContrasena
+            etiqueta="Nueva contraseña"
+            valor={passwordFormData.newPassword}
+            onCambiar={(valor) => setPasswordFormData({ newPassword: valor })}
+            deshabilitado={editing}
+            autoFocus
           />
         </form>
       </Modal>

@@ -21,13 +21,13 @@ import {
 } from '../services/api';
 import { usePendientes } from '../context/PendientesContext';
 import { useRecargaAlSincronizar } from '../hooks/useRecargaAlSincronizar';
-import { unirConPendientes, vistaDeRecorrido, pendientesDelMes } from '../lib/pendientes';
+import { unirConPendientes, vistaDeRecorrido, pendientesDelMes, nuevoId } from '../lib/pendientes';
+import FormularioRecorrido, { ResumenRecorrido } from '../components/formulario/FormularioRecorrido';
+import { PieDeFormulario } from '../components/formulario/Formulario';
 import Modal from '../components/ui/Modal';
 import ConfirmModal from '../components/ui/ConfirmModal';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
-import Input from '../components/ui/Input';
-import Select from '../components/ui/Select';
 import Badge from '../components/ui/Badge';
 import Skeleton from '../components/ui/Skeleton';
 import CalendarioMes from '../components/ui/CalendarioMes';
@@ -47,6 +47,7 @@ import RiegoModal from '../components/RiegoModal';
 import { useEsMovil } from '../hooks/useMediaPreference';
 import { MESES as nombresMeses, rangoDelMes, diaDeFecha, dosDigitos, hoyISO, horaActual } from '../lib/fechas';
 import { haptics } from '../lib/motion';
+import { useEnvioUnico } from '../hooks/useEnvioUnico';
 
 const dinero = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
 
@@ -601,7 +602,11 @@ const Dashboard = () => {
    * hora, desde el registro rápido) llega ya relleno y solo faltan los
    * estudiantes.
    */
+  // El id del recorrido nuevo se fija al abrir el formulario (ver Recorridos).
+  const idAlta = useRef(null);
+
   const handleOpenModal = async (datos = null) => {
+    idAlta.current = nuevoId();
     resetForm();
     if (datos) setFormData((actual) => ({ ...actual, ...datos }));
     setLoadingForm(true);
@@ -623,26 +628,7 @@ const Dashboard = () => {
     if (shouldReload) loadRecorridosData({ silencioso: true });
   };
 
-  const handleChange = (event) => setFormData({ ...formData, [event.target.name]: event.target.value });
-
-  const agregarNino = (event) => {
-    const ninoId = event.target.value;
-    if (!ninoId) return;
-    const nino = ninos.find((n) => n.id.toString() === ninoId.toString());
-    if (!nino || ninosSeleccionados.some((n) => n.nino_id.toString() === ninoId.toString())) return;
-
-    haptics.tick();
-    setNinosSeleccionados([...ninosSeleccionados, {
-      nino_id: ninoId, nombre: nino.nombre, apellidos: nino.apellidos, notas: '',
-    }]);
-    event.target.value = '';
-  };
-
-  const eliminarNino = (index) => {
-    setNinosSeleccionados(ninosSeleccionados.filter((_, i) => i !== index));
-  };
-
-  const handleSubmit = async (event) => {
+  const handleSubmit = useEnvioUnico(async (event) => {
     event.preventDefault();
     if (!formData.fecha || !formData.hora_inicio || !formData.vehiculo_id) {
       showAlert('warning', 'Fecha, hora y vehículo son obligatorios');
@@ -672,6 +658,7 @@ const Dashboard = () => {
         tipo: 'recorrido',
         datos: data,
         vista: vistaDeRecorrido(data, vehiculos, ninosSeleccionados),
+        id: idAlta.current,
       });
       if (guardadoSinConexion) {
         showAlert('info', 'Sin conexión: el recorrido se guardó en este teléfono y se enviará solo cuando vuelva la conexión.', 6000);
@@ -689,9 +676,9 @@ const Dashboard = () => {
     } finally {
       setSaving(false);
     }
-  };
+  });
 
-  const confirmDelete = async () => {
+  const confirmDelete = useEnvioUnico(async () => {
     if (!recorridoAEliminar) return;
     try {
       // Sin conexión se guarda el borrado y el recorrido deja de verse ya.
@@ -713,7 +700,7 @@ const Dashboard = () => {
       setShowDeleteModal(false);
       setRecorridoAEliminar(null);
     }
-  };
+  });
 
   /**
    * ¿Se puede emitir el PDF del mes? No mientras falte algo por llegar al
@@ -824,10 +811,6 @@ const Dashboard = () => {
     }
   };
 
-  const ninosDisponibles = (ninos || []).filter(
-    (n) => !ninosSeleccionados.some((sel) => sel.nino_id?.toString() === n.id?.toString())
-  );
-
   /* ── Cierre del mes a la vista ─────────────────────────────────────────── */
   const cargarCierres = async () => {
     try {
@@ -850,7 +833,7 @@ const Dashboard = () => {
   const esMesFuturo = anioActual > hoy.getFullYear()
     || (anioActual === hoy.getFullYear() && mesActual > hoy.getMonth() + 1);
 
-  const confirmarAccionMes = async () => {
+  const confirmarAccionMes = useEnvioUnico(async () => {
     setOcupadoMes(true);
     try {
       const respuesta = accionMes === 'terminar'
@@ -869,7 +852,7 @@ const Dashboard = () => {
       setOcupadoMes(false);
       setAccionMes(null);
     }
-  };
+  });
 
   /* ── Cifras del tablero ─────────────────────────────────────────────────── */
   const mesAnterior = resumenMeses.at(-2);
@@ -987,9 +970,9 @@ const Dashboard = () => {
     })),
   ].sort((a, b) => b.orden.localeCompare(a.orden)).slice(0, 12), [recorridosMensuales, riegosMensuales]);
 
-  const registrarRiegoRapido = async (datos) => {
+  const registrarRiegoRapido = useEnvioUnico(async (datos, id) => {
     try {
-      const { respuesta, guardadoSinConexion } = await registrar({ tipo: 'riego', datos });
+      const { respuesta, guardadoSinConexion } = await registrar({ tipo: 'riego', datos, id });
       if (guardadoSinConexion) {
         showAlert('info', 'Sin conexión: el riego se guardó en este teléfono y se enviará solo cuando vuelva la conexión.', 6000);
       } else if (fueBien(respuesta)) {
@@ -1005,7 +988,7 @@ const Dashboard = () => {
       showAlert('error', 'No se pudo registrar: ' + mensajeDeError(error));
       return false;
     }
-  };
+  });
 
   const pedirTerminarMes = () => {
     // Terminarlo con algo aún en el teléfono haría que ese registro
@@ -1548,97 +1531,42 @@ const Dashboard = () => {
         </div>
       )}
 
-      {/* Formulario */}
+      {/* Formulario: el mismo que el de Recorridos (components/formulario) */}
       <Modal
         isOpen={isModalOpen}
         onClose={() => handleCloseModal(false)}
         title={editando ? 'Editar recorrido' : 'Nuevo recorrido'}
+        description={editando ? 'Cambia lo que necesites y guarda.' : 'Elige el tipo, el vehículo y quién viaja.'}
+        icono={RouteIcon}
+        tono={formData.tipo_recorrido === 'llevar' ? 'caution' : 'positive'}
         size="max-w-2xl"
         footer={
-          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-            <Button variant="secondary" onClick={() => handleCloseModal(false)}>Cancelar</Button>
-            <Button type="submit" form="form-dashboard-recorrido" loading={saving} disabled={loadingForm}>
-              {editando ? 'Guardar cambios' : 'Registrar'}
-            </Button>
-          </div>
+          <PieDeFormulario
+            resumen={loadingForm ? null : (
+              <ResumenRecorrido
+                datos={formData} vehiculos={vehiculos} seleccionados={ninosSeleccionados} editando={editando}
+              />
+            )}
+            onCancelar={() => handleCloseModal(false)}
+            form="form-dashboard-recorrido"
+            textoEnviar={editando ? 'Guardar cambios' : 'Registrar recorrido'}
+            cargando={saving}
+            deshabilitado={loadingForm}
+          />
         }
       >
-        {loadingForm ? (
-          <div className="space-y-4 py-2">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Skeleton variant="text" className="h-16 w-full" />
-              <Skeleton variant="text" className="h-16 w-full" />
-              <Skeleton variant="text" className="h-16 w-full" />
-              <Skeleton variant="text" className="h-16 w-full" />
-            </div>
-            <Skeleton variant="text" className="h-16 w-full" />
-          </div>
-        ) : (
-          <form id="form-dashboard-recorrido" onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Input label="Fecha" type="date" name="fecha" value={formData.fecha} onChange={handleChange} required disabled={saving} />
-              <Input label="Hora de salida" type="time" name="hora_inicio" value={formData.hora_inicio} onChange={handleChange} required disabled={saving} />
-              <Select label="Vehículo" name="vehiculo_id" value={formData.vehiculo_id} onChange={handleChange} required disabled={saving}>
-                <option value="">Seleccionar…</option>
-                {vehiculos.map((v) => <option key={v.id} value={v.id}>{v.descripcion}</option>)}
-              </Select>
-              <Select label="Tipo de servicio" name="tipo_recorrido" value={formData.tipo_recorrido} onChange={handleChange} required disabled={saving}>
-                <option value="traer">Traer estudiantes</option>
-                <option value="llevar">Llevar estudiantes</option>
-              </Select>
-            </div>
-
-            <Input
-              label="Notas" name="notas" value={formData.notas} onChange={handleChange}
-              placeholder="Tráfico, desvíos o novedades…" disabled={saving}
-            />
-
-            <div className="border-t border-separator/50 pt-4">
-              <Select
-                label={`Pasajeros (${ninosSeleccionados.length})`}
-                onChange={agregarNino} value=""
-                disabled={saving || ninosDisponibles.length === 0}
-                hint={ninosDisponibles.length === 0 ? 'No quedan estudiantes por asignar' : undefined}
-              >
-                <option value="">Añadir estudiante…</option>
-                {ninosDisponibles.map((n) => (
-                  <option key={n.id} value={n.id}>{n.nombre} {n.apellidos}</option>
-                ))}
-              </Select>
-
-              <div className="scroll-area mt-3 grid max-h-48 grid-cols-1 gap-2 sm:grid-cols-2">
-                {ninosSeleccionados.map((nino, index) => (
-                  <div
-                    key={nino.nino_id}
-                    className="flex items-center justify-between gap-2 rounded-control border border-separator/60 bg-surface-secondary p-2 pl-2.5"
-                  >
-                    <div className="flex min-w-0 items-center gap-2.5">
-                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-fill/12 text-caption font-semibold text-label-secondary">
-                        {nino.nombre?.charAt(0) || '?'}
-                      </span>
-                      <span className="truncate text-footnote font-medium text-label">
-                        {nino.nombre} {nino.apellidos}
-                      </span>
-                    </div>
-                    <button
-                      type="button" onClick={() => eliminarNino(index)}
-                      aria-label={`Quitar a ${nino.nombre}`}
-                      className="tappable shrink-0 rounded-full p-1.5 text-label-tertiary transition-colors hover:bg-critical/12 hover:text-critical"
-                    >
-                      <Trash2 size={13} strokeWidth={2.1} />
-                    </button>
-                  </div>
-                ))}
-
-                {ninosSeleccionados.length === 0 && (
-                  <p className="rounded-control border border-dashed border-separator/70 px-4 py-6 text-center text-footnote text-label-tertiary sm:col-span-2">
-                    Todavía no hay pasajeros
-                  </p>
-                )}
-              </div>
-            </div>
-          </form>
-        )}
+        <FormularioRecorrido
+          id="form-dashboard-recorrido"
+          onSubmit={handleSubmit}
+          datos={formData}
+          onCampo={(campo, valor) => setFormData((antes) => ({ ...antes, [campo]: valor }))}
+          vehiculos={vehiculos}
+          ninos={ninos}
+          seleccionados={ninosSeleccionados}
+          onSeleccion={setNinosSeleccionados}
+          deshabilitado={saving}
+          cargando={loadingForm}
+        />
       </Modal>
 
       <ConfirmModal
