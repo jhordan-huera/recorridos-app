@@ -16,6 +16,7 @@ import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import ConfirmModal from '../components/ui/ConfirmModal';
 import Skeleton from '../components/ui/Skeleton';
+import { useEnvioUnico } from '../hooks/useEnvioUnico';
 
 const dinero = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
 const fechaCorta = new Intl.DateTimeFormat('es-EC', { day: 'numeric', month: 'short' });
@@ -134,7 +135,7 @@ const Cobros = () => {
     }
   };
 
-  const ejecutarConfirmacion = async () => {
+  const ejecutarConfirmacion = useEnvioUnico(async () => {
     if (!confirmar) return;
     const { tipo, fila } = confirmar;
     setOcupado(fila.user_id);
@@ -156,7 +157,7 @@ const Cobros = () => {
       setOcupado(null);
       setConfirmar(null);
     }
-  };
+  });
 
   return (
     <div className="pb-4">

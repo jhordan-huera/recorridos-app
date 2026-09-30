@@ -1,13 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAlert } from '../context/AlertContext';
 import { usePendientes } from '../context/PendientesContext';
 import {
   updateRiego, mensajeDeError, fueBien, mensajeDeRespuesta, esFalloDeRed,
 } from '../services/api';
 import { hoyISO, horaActual } from '../lib/fechas';
+import { nuevoId } from '../lib/pendientes';
 import Modal from './ui/Modal';
 import Button from './ui/Button';
 import Input from './ui/Input';
+import { useEnvioUnico } from '../hooks/useEnvioUnico';
 
 /* Fecha y hora arrancan en el momento de abrir el formulario: lo normal es
    registrar el riego justo después de hacerlo. Son funciones, no constantes,
@@ -39,17 +41,23 @@ const RiegoModal = ({ abierto, onCerrar, riego = null, onGuardado }) => {
   const { registrar, editar } = usePendientes();
   const [formData, setFormData] = useState(formVacio);
   const [guardando, setGuardando] = useState(false);
+  // El id del riego nuevo se fija al abrir el formulario: un segundo envío
+  // del mismo formulario lleva el mismo id y el servidor no lo duplica.
+  const idAlta = useRef(null);
 
   // Se rellena al abrir, no en cada render: así lo que el usuario está
   // escribiendo no se pisa si el padre se vuelve a pintar.
   useEffect(() => {
-    if (abierto) setFormData(riego ? desdeRiego(riego) : formVacio());
+    if (abierto) {
+      setFormData(riego ? desdeRiego(riego) : formVacio());
+      idAlta.current = nuevoId();
+    }
     // Depende del id, no del objeto: un objeto nuevo en cada render del padre
     // reiniciaría el formulario a media escritura.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [abierto, riego?.id]);
 
-  const handleSubmit = async (event) => {
+  const handleSubmit = useEnvioUnico(async (event) => {
     event.preventDefault();
     if (!formData.fecha || !formData.hora) {
       showAlert('warning', 'La fecha y la hora son obligatorias');
@@ -81,7 +89,7 @@ const RiegoModal = ({ abierto, onCerrar, riego = null, onGuardado }) => {
         return;
       }
 
-      const { respuesta, guardadoSinConexion } = await registrar({ tipo: 'riego', datos });
+      const { respuesta, guardadoSinConexion } = await registrar({ tipo: 'riego', datos, id: idAlta.current });
       if (guardadoSinConexion) {
         listo('info', 'Sin conexión: el riego se guardó en este teléfono y se enviará solo cuando vuelva la conexión.');
       } else if (fueBien(respuesta)) {
@@ -98,7 +106,7 @@ const RiegoModal = ({ abierto, onCerrar, riego = null, onGuardado }) => {
     } finally {
       setGuardando(false);
     }
-  };
+  });
 
   return (
     <Modal

@@ -31,6 +31,7 @@ import { useEsMovil } from '../hooks/useMediaPreference';
 import {
   CabeceraMovil, BuscadorMovil, CifrasMovil, TarjetaMovil, AvatarMovil, InsigniaMovil,
 } from '../components/movil/Movil';
+import { useEnvioUnico } from '../hooks/useEnvioUnico';
 
 const emptyForm = {
   tipo: 'propio', descripcion: '', placa: '', capacidad: '', costo_por_recorrido: '',
@@ -111,7 +112,7 @@ const Vehiculos = () => {
     setMostrarModal(false);
   };
 
-  const handleSubmit = async (event) => {
+  const handleSubmit = useEnvioUnico(async (event) => {
     event.preventDefault();
     if (!formData.descripcion || !formData.costo_por_recorrido) {
       showAlert('warning', 'La descripción y el costo son obligatorios');
@@ -160,9 +161,9 @@ const Vehiculos = () => {
     } finally {
       setSaving(false);
     }
-  };
+  });
 
-  const confirmDelete = async () => {
+  const confirmDelete = useEnvioUnico(async () => {
     if (!vehiculoAEliminar) return;
     setSaving(true);
     try {
@@ -180,7 +181,7 @@ const Vehiculos = () => {
       setShowDeleteModal(false);
       setVehiculoAEliminar(null);
     }
-  };
+  });
 
   const handleEdit = (vehiculo) => {
     setEditMode(true);

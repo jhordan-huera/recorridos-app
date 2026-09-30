@@ -21,7 +21,7 @@ import {
 } from '../services/api';
 import { usePendientes } from '../context/PendientesContext';
 import { useRecargaAlSincronizar } from '../hooks/useRecargaAlSincronizar';
-import { unirConPendientes, vistaDeRecorrido, pendientesDelMes } from '../lib/pendientes';
+import { unirConPendientes, vistaDeRecorrido, pendientesDelMes, nuevoId } from '../lib/pendientes';
 import Modal from '../components/ui/Modal';
 import ConfirmModal from '../components/ui/ConfirmModal';
 import Button from '../components/ui/Button';
@@ -47,6 +47,7 @@ import RiegoModal from '../components/RiegoModal';
 import { useEsMovil } from '../hooks/useMediaPreference';
 import { MESES as nombresMeses, rangoDelMes, diaDeFecha, dosDigitos, hoyISO, horaActual } from '../lib/fechas';
 import { haptics } from '../lib/motion';
+import { useEnvioUnico } from '../hooks/useEnvioUnico';
 
 const dinero = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
 
@@ -601,7 +602,11 @@ const Dashboard = () => {
    * hora, desde el registro rápido) llega ya relleno y solo faltan los
    * estudiantes.
    */
+  // El id del recorrido nuevo se fija al abrir el formulario (ver Recorridos).
+  const idAlta = useRef(null);
+
   const handleOpenModal = async (datos = null) => {
+    idAlta.current = nuevoId();
     resetForm();
     if (datos) setFormData((actual) => ({ ...actual, ...datos }));
     setLoadingForm(true);
@@ -642,7 +647,7 @@ const Dashboard = () => {
     setNinosSeleccionados(ninosSeleccionados.filter((_, i) => i !== index));
   };
 
-  const handleSubmit = async (event) => {
+  const handleSubmit = useEnvioUnico(async (event) => {
     event.preventDefault();
     if (!formData.fecha || !formData.hora_inicio || !formData.vehiculo_id) {
       showAlert('warning', 'Fecha, hora y vehículo son obligatorios');
@@ -672,6 +677,7 @@ const Dashboard = () => {
         tipo: 'recorrido',
         datos: data,
         vista: vistaDeRecorrido(data, vehiculos, ninosSeleccionados),
+        id: idAlta.current,
       });
       if (guardadoSinConexion) {
         showAlert('info', 'Sin conexión: el recorrido se guardó en este teléfono y se enviará solo cuando vuelva la conexión.', 6000);
@@ -689,9 +695,9 @@ const Dashboard = () => {
     } finally {
       setSaving(false);
     }
-  };
+  });
 
-  const confirmDelete = async () => {
+  const confirmDelete = useEnvioUnico(async () => {
     if (!recorridoAEliminar) return;
     try {
       // Sin conexión se guarda el borrado y el recorrido deja de verse ya.
@@ -713,7 +719,7 @@ const Dashboard = () => {
       setShowDeleteModal(false);
       setRecorridoAEliminar(null);
     }
-  };
+  });
 
   /**
    * ¿Se puede emitir el PDF del mes? No mientras falte algo por llegar al
@@ -850,7 +856,7 @@ const Dashboard = () => {
   const esMesFuturo = anioActual > hoy.getFullYear()
     || (anioActual === hoy.getFullYear() && mesActual > hoy.getMonth() + 1);
 
-  const confirmarAccionMes = async () => {
+  const confirmarAccionMes = useEnvioUnico(async () => {
     setOcupadoMes(true);
     try {
       const respuesta = accionMes === 'terminar'
@@ -869,7 +875,7 @@ const Dashboard = () => {
       setOcupadoMes(false);
       setAccionMes(null);
     }
-  };
+  });
 
   /* ── Cifras del tablero ─────────────────────────────────────────────────── */
   const mesAnterior = resumenMeses.at(-2);
@@ -987,9 +993,9 @@ const Dashboard = () => {
     })),
   ].sort((a, b) => b.orden.localeCompare(a.orden)).slice(0, 12), [recorridosMensuales, riegosMensuales]);
 
-  const registrarRiegoRapido = async (datos) => {
+  const registrarRiegoRapido = useEnvioUnico(async (datos, id) => {
     try {
-      const { respuesta, guardadoSinConexion } = await registrar({ tipo: 'riego', datos });
+      const { respuesta, guardadoSinConexion } = await registrar({ tipo: 'riego', datos, id });
       if (guardadoSinConexion) {
         showAlert('info', 'Sin conexión: el riego se guardó en este teléfono y se enviará solo cuando vuelva la conexión.', 6000);
       } else if (fueBien(respuesta)) {
@@ -1005,7 +1011,7 @@ const Dashboard = () => {
       showAlert('error', 'No se pudo registrar: ' + mensajeDeError(error));
       return false;
     }
-  };
+  });
 
   const pedirTerminarMes = () => {
     // Terminarlo con algo aún en el teléfono haría que ese registro

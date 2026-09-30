@@ -13,6 +13,7 @@ import ConfirmModal from '../components/ui/ConfirmModal';
 import Modal from '../components/ui/Modal';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
+import InputContrasena from '../components/ui/InputContrasena';
 import Select from '../components/ui/Select';
 import Switch from '../components/ui/Switch';
 import Card from '../components/ui/Card';
@@ -25,6 +26,7 @@ import EmptyState from '../components/ui/EmptyState';
 import SearchField from '../components/ui/SearchField';
 import { crossFade, springSheet } from '../lib/motion';
 import PestanasAdmin from '../components/PestanasAdmin';
+import { useEnvioUnico } from '../hooks/useEnvioUnico';
 
 const getInitials = (name) => {
   if (!name) return '??';
@@ -85,7 +87,7 @@ const Users = () => {
     setShowDeleteModal(true);
   };
 
-  const confirmDelete = async () => {
+  const confirmDelete = useEnvioUnico(async () => {
     try {
       setEditing(true);
       await deleteUser(selectedUser.id);
@@ -98,9 +100,9 @@ const Users = () => {
       setShowDeleteModal(false);
       setSelectedUser(null);
     }
-  };
+  });
 
-  const handleCreateUser = async (event) => {
+  const handleCreateUser = useEnvioUnico(async (event) => {
     event.preventDefault();
     if (!createFormData.nombre || !createFormData.usuario || !createFormData.password) {
       showAlert('warning', 'Completa todos los campos obligatorios');
@@ -127,9 +129,9 @@ const Users = () => {
     } finally {
       setCreating(false);
     }
-  };
+  });
 
-  const handleEditUser = async (event) => {
+  const handleEditUser = useEnvioUnico(async (event) => {
     event.preventDefault();
     if (!editFormData.nombre || !editFormData.usuario) {
       showAlert('warning', 'El nombre y el correo son obligatorios');
@@ -152,9 +154,9 @@ const Users = () => {
     } finally {
       setEditing(false);
     }
-  };
+  });
 
-  const handlePasswordReset = async (event) => {
+  const handlePasswordReset = useEnvioUnico(async (event) => {
     event.preventDefault();
     if (passwordFormData.newPassword.length < 8) {
       showAlert('warning', 'La contraseña debe tener al menos 8 caracteres');
@@ -177,7 +179,7 @@ const Users = () => {
     } finally {
       setEditing(false);
     }
-  };
+  });
 
   const openEditForm = (user) => {
     setSelectedUser(user);
@@ -406,8 +408,8 @@ const Users = () => {
             hint="Con lo que entrará. No hace falta que sea un correo."
           />
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Input
-              label="Contraseña" type="password" placeholder="••••••"
+            <InputContrasena
+              label="Contraseña" placeholder="••••••••" autoComplete="new-password"
               value={createFormData.password}
               onChange={(event) => setCreateFormData({ ...createFormData, password: event.target.value })}
               required minLength={8} hint="Mínimo 8 caracteres"
@@ -554,10 +556,10 @@ const Users = () => {
             </p>
           </div>
 
-          <Input
-            label="Nueva contraseña" type="password" value={passwordFormData.newPassword}
+          <InputContrasena
+            label="Nueva contraseña" autoComplete="new-password" value={passwordFormData.newPassword}
             onChange={(event) => setPasswordFormData({ newPassword: event.target.value })}
-            placeholder="••••••" minLength={8} required autoFocus hint="Mínimo 8 caracteres"
+            placeholder="••••••••" minLength={8} required autoFocus hint="Mínimo 8 caracteres"
           />
         </form>
       </Modal>

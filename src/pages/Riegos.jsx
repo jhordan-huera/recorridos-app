@@ -31,6 +31,7 @@ import EmptyState from '../components/ui/EmptyState';
 import CalendarioMes from '../components/ui/CalendarioMes';
 import { MESES, dosDigitos, rangoDelMes, diaDeFecha, fechaCorta, fechaLarga } from '../lib/fechas';
 import { crossFade, springSheet } from '../lib/motion';
+import { useEnvioUnico } from '../hooks/useEnvioUnico';
 
 const DIAS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
 
@@ -138,7 +139,7 @@ const Riegos = () => {
   const abrirNuevo = () => { setEnEdicion(null); setMostrarModal(true); };
   const abrirEdicion = (riego) => { setEnEdicion(riego); setMostrarModal(true); };
 
-  const confirmarBorrado = async () => {
+  const confirmarBorrado = useEnvioUnico(async () => {
     if (!aEliminar) return;
     setBorrando(true);
     try {
@@ -158,7 +159,7 @@ const Riegos = () => {
       setShowDeleteModal(false);
       setAEliminar(null);
     }
-  };
+  });
 
   const descargarPdf = async () => {
     // Un PDF sin lo que falta por enviar sería un estado de cuenta incompleto

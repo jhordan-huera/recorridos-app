@@ -137,9 +137,13 @@ const opcionesDeEnvio = () => ({
  * Devuelve `{ respuesta }` si llegó o `{ guardadoSinConexion: true }` si quedó
  * guardada. Un error del servidor (400, 409…) se lanza igual que siempre: eso
  * no es falta de conexión y hay que enseñarlo en el formulario.
+ *
+ * `id`: el que el formulario generó al abrirse. Si el mismo formulario se
+ * envía dos veces, las dos llevan el mismo id y el servidor guarda una sola.
+ * Sin él se genera uno aquí.
  */
-export const registrar = async ({ userId, tipo, datos, vista }) => {
-  const id = nuevoId();
+export const registrar = async ({ userId, tipo, datos, vista, id: idDelFormulario }) => {
+  const id = idDelFormulario || nuevoId();
   const guardarAqui = async () => {
     await encolar({ id, userId, tipo, datos, vista });
     return { guardadoSinConexion: true, id };

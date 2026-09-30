@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import {
   Plus, RefreshCw, ChevronLeft, ChevronRight, Route as RouteIcon,
@@ -13,7 +13,7 @@ import {
   updateRecorrido,
   getAllRecorridos, getAllNinos, getAllVehiculos, mensajeDeError, fueBien, mensajeDeRespuesta, esFalloDeRed,
 } from '../services/api';
-import { unirConPendientes, vistaDeRecorrido, pendientesDelMes } from '../lib/pendientes';
+import { unirConPendientes, vistaDeRecorrido, pendientesDelMes, nuevoId } from '../lib/pendientes';
 import Modal from '../components/ui/Modal';
 import ConfirmModal from '../components/ui/ConfirmModal';
 import Button from '../components/ui/Button';
@@ -32,6 +32,7 @@ import SelectorDeMes from '../components/ui/SelectorDeMes';
 import {
   CabeceraMovil, BuscadorMovil, FiltrosMovil, CifrasMovil, TarjetaMovil, AvatarMovil, InsigniaMovil,
 } from '../components/movil/Movil';
+import { useEnvioUnico } from '../hooks/useEnvioUnico';
 
 const TIPOS_MOVIL = [
   { valor: 'todos', etiqueta: 'Todos' },
@@ -203,7 +204,12 @@ const Recorridos = () => {
     setRecorridoId(null);
   };
 
+  // El id del recorrido nuevo se fija al abrir el formulario: si se envía dos
+  // veces, las dos llevan el mismo id y el servidor guarda uno solo.
+  const idAlta = useRef(null);
+
   const handleOpenModal = async () => {
+    idAlta.current = nuevoId();
     resetForm();
     setLoadingForm(true);
     setMostrarModal(true);
@@ -258,7 +264,7 @@ const Recorridos = () => {
     setNinosSeleccionados(ninosSeleccionados.filter((_, i) => i !== index));
   };
 
-  const handleSubmit = async (event) => {
+  const handleSubmit = useEnvioUnico(async (event) => {
     event.preventDefault();
     if (!formData.fecha || !formData.hora_inicio || !formData.vehiculo_id) {
       showAlert('warning', 'Fecha, hora y vehículo son obligatorios');
@@ -297,7 +303,9 @@ const Recorridos = () => {
         return;
       }
 
-      const { respuesta, guardadoSinConexion } = await registrar({ tipo: 'recorrido', datos: data, vista });
+      const { respuesta, guardadoSinConexion } = await registrar({
+        tipo: 'recorrido', datos: data, vista, id: idAlta.current,
+      });
       if (guardadoSinConexion) {
         listo('info', 'Sin conexión: el recorrido se guardó en este teléfono y se enviará solo cuando vuelva la conexión.');
       } else if (fueBien(respuesta)) {
@@ -312,9 +320,9 @@ const Recorridos = () => {
     } finally {
       setSaving(false);
     }
-  };
+  });
 
-  const confirmDelete = async () => {
+  const confirmDelete = useEnvioUnico(async () => {
     if (!recorridoAEliminar) return;
     setSaving(true);
     try {
@@ -338,7 +346,7 @@ const Recorridos = () => {
       setShowDeleteModal(false);
       setRecorridoAEliminar(null);
     }
-  };
+  });
 
   const ninosDisponibles = (ninos || []).filter(
     (n) => !ninosSeleccionados.some((sel) => sel.nino_id?.toString() === n.id?.toString())

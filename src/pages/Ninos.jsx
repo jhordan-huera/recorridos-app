@@ -28,6 +28,7 @@ import { useEsMovil } from '../hooks/useMediaPreference';
 import {
   CabeceraMovil, BuscadorMovil, CifrasMovil, TarjetaMovil, AvatarMovil,
 } from '../components/movil/Movil';
+import { useEnvioUnico } from '../hooks/useEnvioUnico';
 
 const emptyForm = { nombre: '', apellidos: '', direccion: '', telefono_contacto: '' };
 
@@ -79,7 +80,7 @@ const Ninos = () => {
     setFormData(emptyForm);
   };
 
-  const handleSubmit = async (event) => {
+  const handleSubmit = useEnvioUnico(async (event) => {
     event.preventDefault();
     if (!formData.nombre || !formData.apellidos) {
       showAlert('warning', 'El nombre y los apellidos son obligatorios');
@@ -105,9 +106,9 @@ const Ninos = () => {
     } finally {
       setSaving(false);
     }
-  };
+  });
 
-  const confirmDelete = async () => {
+  const confirmDelete = useEnvioUnico(async () => {
     if (!ninoAEliminar) return;
     setSaving(true);
     try {
@@ -125,7 +126,7 @@ const Ninos = () => {
       setShowDeleteModal(false);
       setNinoAEliminar(null);
     }
-  };
+  });
 
   const handleEdit = (nino) => {
     setEditMode(true);
