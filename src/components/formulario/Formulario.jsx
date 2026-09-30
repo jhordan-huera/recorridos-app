@@ -39,11 +39,14 @@ export const Seccion = ({ icono: Icono, titulo, extra = null, children, classNam
 /**
  * Opciones grandes, como Traer / Llevar: icono, nombre y una línea que
  * explica. La elegida se tiñe de su color y lleva una marca.
+ *
+ * `apilar`: una debajo de otra en el móvil. Para opciones con nombres
+ * largos ("Administrador"), que en media pantalla no caben.
  */
-export const OpcionesGrandes = ({ etiqueta, opciones, valor, onCambiar, deshabilitado = false }) => {
+export const OpcionesGrandes = ({ etiqueta, opciones, valor, onCambiar, deshabilitado = false, apilar = false }) => {
   const reduceMotion = useReducedMotion();
   return (
-    <div role="radiogroup" aria-label={etiqueta} className="grid grid-cols-2 gap-2">
+    <div role="radiogroup" aria-label={etiqueta} className={`grid gap-2 ${apilar ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-2'}`}>
       {opciones.map(({ valor: v, titulo, detalle, icono: Icono, tono = 'accent' }) => {
         const activa = v === valor;
         const t = TONOS[tono] || TONOS.accent;
@@ -99,9 +102,10 @@ export const Atajo = ({ activo = false, children, ...props }) => (
 
 /**
  * Caja con icono y la etiqueta pequeña dentro, encima del valor. Envuelve
- * un único `<input>` o `<select>`.
+ * un único `<input>` o `<select>`; `trailing` va al final (el ojo de una
+ * contraseña, por ejemplo).
  */
-export const CajaCampo = ({ icono: Icono, etiqueta, prefijo = null, children, className = '' }) => {
+export const CajaCampo = ({ icono: Icono, etiqueta, prefijo = null, trailing = null, children, className = '' }) => {
   const id = useId();
   return (
     <div
@@ -122,6 +126,57 @@ export const CajaCampo = ({ icono: Icono, etiqueta, prefijo = null, children, cl
           })}
         </div>
       </div>
+      {trailing}
+    </div>
+  );
+};
+
+/**
+ * Opciones que se marcan y desmarcan por separado (varias a la vez), con el
+ * mismo aspecto que OpcionesGrandes. Cada opción trae su `marcada` y su
+ * `onCambiar`.
+ */
+export const OpcionesMarcables = ({ etiqueta, opciones, deshabilitado = false }) => {
+  const reduceMotion = useReducedMotion();
+  return (
+    <div role="group" aria-label={etiqueta} className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+      {opciones.map(({ clave, titulo, detalle, icono: Icono, tono = 'accent', marcada, onCambiar }) => {
+        const t = TONOS[tono] || TONOS.accent;
+        return (
+          <motion.button
+            key={clave}
+            type="button"
+            role="checkbox"
+            aria-checked={marcada}
+            disabled={deshabilitado}
+            onClick={() => { haptics.tick(); onCambiar(!marcada); }}
+            whileTap={reduceMotion ? { opacity: 0.7 } : { scale: 0.97 }}
+            transition={springSnappy}
+            className={`tappable relative flex items-center gap-3 rounded-[1.1rem] border-2 p-3 text-left transition-colors
+                        disabled:opacity-50 ${marcada ? t.activa : 'border-separator/50 bg-surface hover:border-separator'}`}
+          >
+            <span
+              className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors ${
+                marcada ? t.icono : 'bg-fill/10 text-label-secondary'
+              }`}
+            >
+              <Icono size={19} strokeWidth={2.2} aria-hidden="true" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className={`block text-subhead font-semibold ${marcada ? t.texto : 'text-label'}`}>{titulo}</span>
+              {detalle && <span className="line-clamp-2 block text-caption leading-tight text-label-secondary">{detalle}</span>}
+            </span>
+            <span
+              aria-hidden="true"
+              className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 transition-colors ${
+                marcada ? `border-transparent ${t.icono}` : 'border-separator'
+              }`}
+            >
+              {marcada && <Check size={13} strokeWidth={3} />}
+            </span>
+          </motion.button>
+        );
+      })}
     </div>
   );
 };
