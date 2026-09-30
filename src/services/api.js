@@ -150,7 +150,74 @@ const cerrarSesionForzado = () => {
   });
 };
 
-const renovarToken = async () => {
+/**
+ * Cerrojo de sesión compartido entre pestañas (Web Locks).
+ *
+ * El refresh rota y el servidor trata un refresh ya usado como robado: si dos
+ * pestañas renuevan a la vez con el mismo, la segunda cierra TODAS las sesiones
+ * de la cuenta. Con el cerrojo, renovar y cerrar sesión van de una en una en
+ * todo el navegador.
+ *
+ * Sin Web Locks (iOS < 15.4) se sigue sin cerrojo, como antes. `esperaMaxMs`
+ * limita cuánto se espera: pasado ese tiempo se sigue sin él.
+ */
+const CERROJO_DE_SESION = 'bitacora-sesion';
+
+const conCerrojo = async (fn, { esperaMaxMs } = {}) => {
+  const locks = globalThis.navigator?.locks;
+  if (!locks?.request) return fn();
+  if (!esperaMaxMs) return locks.request(CERROJO_DE_SESION, fn);
+
+  const control = new AbortController();
+  const temporizador = setTimeout(() => control.abort(), esperaMaxMs);
+  let dentro = false;
+  try {
+    return await locks.request(CERROJO_DE_SESION, { signal: control.signal }, () => {
+      dentro = true;
+      clearTimeout(temporizador);
+      return fn();
+    });
+  } catch (error) {
+    // No se consiguió el cerrojo a tiempo: se sigue sin él.
+    if (!dentro && error?.name === 'AbortError') return fn();
+    throw error;
+  } finally {
+    clearTimeout(temporizador);
+  }
+};
+
+/** La cuenta de un access token (su `sub`). Solo para comparar, no verifica nada. */
+const cuentaDelToken = (token) => {
+  try {
+    const cuerpo = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    return JSON.parse(atob(cuerpo)).sub ?? null;
+  } catch {
+    return null;
+  }
+};
+
+/** La sesión guardada ya no es la de la petición: se cerró o entró otra cuenta. */
+const errorDeSesionCambiada = () => Object.assign(
+  new Error('La sesión cambió mientras se renovaba'),
+  { sesionCambiada: true },
+);
+
+/**
+ * Renueva el access token que falló (`tokenQueFallo`).
+ *
+ *  - Si al conseguir el cerrojo otra pestaña ya lo renovó, se usa el suyo.
+ *  - Si mientras tanto la sesión se cerró o entró otra cuenta, no se renueva
+ *    nada: antes, una renovación en vuelo al cerrar sesión volvía a guardar
+ *    tokens válidos y la sesión se reabría sola.
+ */
+const renovarToken = (tokenQueFallo) => conCerrojo(async () => {
+  const actual = getAccessToken();
+  if (!tokenQueFallo || !actual) throw errorDeSesionCambiada();
+  if (actual !== tokenQueFallo) {
+    if (cuentaDelToken(actual) !== cuentaDelToken(tokenQueFallo)) throw errorDeSesionCambiada();
+    return actual;
+  }
+
   const refresh = getRefreshToken();
   if (!refresh) throw new Error('sin refresh token');
 
@@ -160,12 +227,25 @@ const renovarToken = async () => {
     timeout: TIEMPO_MAXIMO_MS,
   });
 
+  // Se cerró la sesión (o cambió) mientras llegaba la respuesta: no se
+  // resucita, y el refresh recién emitido se revoca para que no quede vivo.
+  if (getRefreshToken() !== refresh) {
+    axios.post(`${API_URL}/auth/logout`, { refresh_token: data.data.refresh_token }, { timeout: 5000 }).catch(() => {});
+    throw errorDeSesionCambiada();
+  }
+
   guardarSesion({
     access_token: data.data.access_token,
     refresh_token: data.data.refresh_token,
     usuario: data.data.usuario,
   });
   return data.data.access_token;
+});
+
+/** El token con el que salió una petición, sin el "Bearer ". */
+const tokenDeLaPeticion = (config) => {
+  const cabecera = config?.headers?.Authorization ?? config?.headers?.get?.('Authorization');
+  return typeof cabecera === 'string' ? cabecera.replace(/^Bearer\s+/, '') : null;
 };
 
 api.interceptors.response.use(
@@ -183,12 +263,15 @@ api.interceptors.response.use(
       // Si llegan varias peticiones con el token caducado a la vez, todas
       // esperan a la MISMA renovación. Sin esto cada una gastaría un refresh
       // distinto y la rotación cerraría la sesión por "token reutilizado".
-      renovando = renovando || renovarToken().finally(() => { renovando = null; });
+      renovando = renovando || renovarToken(tokenDeLaPeticion(original)).finally(() => { renovando = null; });
       const nuevo = await renovando;
 
       original.headers.Authorization = `Bearer ${nuevo}`;
       return api(original);
     } catch (errorAlRenovar) {
+      // La sesión ya es otra (o ninguna): no se toca lo guardado, que es de
+      // quien esté ahora. Esta pestaña se recarga sola (ver AuthContext).
+      if (errorAlRenovar?.sesionCambiada) return Promise.reject(error);
       // Sin red para renovar no es una sesión muerta: se deja como está y la
       // siguiente petición con conexión lo vuelve a intentar. Cerrarla aquí
       // dejaría fuera a quien no puede volver a entrar hasta tener internet.
@@ -381,7 +464,14 @@ export const login = (credentials) => api.post('/auth/login', credentials);
 export const refreshSession = () => api.post('/auth/refresh', { refresh_token: getRefreshToken() });
 // Con poca señal no se hace esperar 20 s a quien quiere salir: si no llega,
 // la sesión se cierra en local igualmente.
-export const logoutApi = () => api.post('/auth/logout', { refresh_token: getRefreshToken() }, { timeout: 5000 });
+//
+// Espera (como mucho 4 s) a que termine una renovación en curso, en esta
+// pestaña o en otra: si no, se revocaba el refresh que se estaba canjeando y
+// el nuevo quedaba vivo.
+export const logoutApi = () => conCerrojo(
+  () => api.post('/auth/logout', { refresh_token: getRefreshToken() }, { timeout: 5000 }),
+  { esperaMaxMs: 4000 },
+);
 export const logoutAll = () => api.post('/auth/logout-all');
 export const verifyToken = () => api.get('/auth/verify');
 export const getCurrentUser = () => api.get('/auth/me');

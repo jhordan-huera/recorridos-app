@@ -45,6 +45,23 @@ export const AuthProvider = ({ children }) => {
     });
   }, [cerrarSesionLocal]);
 
+  // Otra pestaña cerró la sesión o entró con otra cuenta: esta no puede seguir
+  // con la anterior. Sin esto, una pestaña vieja seguía enseñando la cuenta de
+  // antes mientras sus peticiones salían con la sesión nueva, y enviaba la cola
+  // sin conexión de una cuenta a nombre de la otra. Se recarga para empezar
+  // de cero con lo que haya guardado.
+  useEffect(() => {
+    if (!user) return undefined;
+    const alCambiarEnOtraPestana = (evento) => {
+      if (evento.storageArea && evento.storageArea !== localStorage) return;
+      if (evento.key !== null && !['user', 'access_token', 'refresh_token'].includes(evento.key)) return;
+      const guardado = getCurrentUserInfo();
+      if (!getAccessToken() || String(guardado.id ?? '') !== String(user.id)) window.location.reload();
+    };
+    window.addEventListener('storage', alCambiarEnOtraPestana);
+    return () => window.removeEventListener('storage', alCambiarEnOtraPestana);
+  }, [user]);
+
   useEffect(() => {
     const comprobarSesion = async () => {
       if (!getAccessToken()) {
