@@ -4,26 +4,30 @@ import * as Sentry from '@sentry/react';
 import App from './App.jsx';
 import './index.css';
 
-// CONFIGURACIÓN SENTRY - Versión actualizada
+/*
+ * Sentry recoge los errores de la app para poder arreglarlos. Solo lo
+ * imprescindible: la app maneja nombres de niños, direcciones y teléfonos,
+ * y nada de eso tiene por qué salir de ella.
+ *  - sendDefaultPii: false  → sin IP ni datos de la cuenta en los informes.
+ *  - Grabación de pantalla solo cuando hay un error (nunca de una sesión
+ *    normal), con todo el texto, los campos y las imágenes tapados.
+ */
 Sentry.init({
   dsn: "https://608dfb89ee52ac528ae19442fe6d5d24@o4510494262165504.ingest.us.sentry.io/4510494301487104",
-  
-  // Integraciones disponibles directamente desde @sentry/react
+
   integrations: [
-    Sentry.browserTracingIntegration(), // ← Nueva forma
-    Sentry.replayIntegration(), // ← Si quieres session replay
+    Sentry.browserTracingIntegration(),
+    Sentry.replayIntegration({ maskAllText: true, maskAllInputs: true, blockAllMedia: true }),
   ],
-  
-  // Configuración de Performance
+
   tracesSampleRate: 1.0,
-  
-  // Configuración de Session Replay (opcional)
-  replaysSessionSampleRate: 0.1,
+
+  replaysSessionSampleRate: 0,
   replaysOnErrorSampleRate: 1.0,
-  
+
   environment: import.meta.env.MODE || 'development',
-  sendDefaultPii: true,
-  
+  sendDefaultPii: false,
+
   debug: false,
 });
 
