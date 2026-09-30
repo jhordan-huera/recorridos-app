@@ -109,6 +109,7 @@ export const CajaCampo = ({ icono: Icono, etiqueta, prefijo = null, trailing = n
   const id = useId();
   return (
     <div
+      data-campo
       className={`flex h-[3.75rem] min-w-0 items-center gap-3 rounded-[1.1rem] border border-separator/60 bg-surface px-3.5
                   transition-[border-color,box-shadow] duration-[var(--t-fast)]
                   focus-within:border-accent focus-within:shadow-focus ${className}`}
