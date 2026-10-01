@@ -486,7 +486,11 @@ export const getAllUsers = () => conCopia('usuarios', () => obtenerTodo(getUsers
 export const getUserById = (id) => api.get(`/users/${id}`);
 export const createUser = (data) => api.post('/users', data);
 export const updateUser = (id, data) => api.put(`/users/${id}`, data);
-export const deleteUser = (id) => api.delete(`/users/${id}`);
+// Las cuentas no se borran: se desactivan (no pueden entrar y sus datos se
+// conservan) y se pueden reactivar. Por PUT y no por DELETE a propósito: una
+// API antigua rechaza el campo, mientras que su DELETE sí borraba la cuenta.
+export const desactivarUsuario = (id) => api.put(`/users/${id}`, { activo: false });
+export const reactivarUsuario = (id) => api.put(`/users/${id}`, { activo: true });
 
 /**
  * Un administrador restablece la contraseña de otra cuenta.
