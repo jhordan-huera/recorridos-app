@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import {
-  Plus, RefreshCw, Users as UsersIcon, ShieldCheck, Pencil, KeyRound, Trash2,
+  Plus, RefreshCw, Users as UsersIcon, ShieldCheck, Pencil, KeyRound, UserX, UserCheck,
   AlertTriangle, UserPlus, UserPen,
 } from 'lucide-react';
 import {
-  deleteUser, createUser, updateUser, getAllUsers, resetUserPassword, mensajeDeError, fueBien, mensajeDeRespuesta,
+  desactivarUsuario, reactivarUsuario, createUser, updateUser, getAllUsers, resetUserPassword,
+  mensajeDeError, fueBien, mensajeDeRespuesta,
 } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useAlert } from '../context/AlertContext';
@@ -39,10 +40,11 @@ const Users = () => {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [showEditForm, setShowEditForm] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showDesactivarModal, setShowDesactivarModal] = useState(false);
 
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [reactivando, setReactivando] = useState(null); // id de la cuenta que se reactiva
 
   const [selectedUser, setSelectedUser] = useState(null);
   const { isAdmin, user: currentUser } = useAuth();
@@ -76,29 +78,50 @@ const Users = () => {
     }
   };
 
-  const handleDeleteUser = (userId) => {
-    if (userId === currentUser?.id) {
-      showAlert('warning', 'No puedes eliminar tu propio usuario');
+  /** Sustituye una cuenta de la lista por la versión que devolvió la API. */
+  const ponerUsuario = (actualizado) => setUsers((antes) => antes.map((u) => (u.id === actualizado.id ? actualizado : u)));
+
+  const handleDesactivar = (user) => {
+    if (user.id === currentUser?.id) {
+      showAlert('warning', 'No puedes desactivar tu propia cuenta');
       return;
     }
-    setSelectedUser(users.find((user) => user.id === userId));
-    setShowDeleteModal(true);
+    setSelectedUser(user);
+    setShowDesactivarModal(true);
   };
 
-  const confirmDelete = useEnvioUnico(async () => {
+  /**
+   * Las cuentas no se borran: se desactivan. La persona no puede entrar y sus
+   * sesiones se cierran, pero sus recorridos, riegos y cierres se conservan.
+   */
+  const confirmarDesactivar = useEnvioUnico(async () => {
     try {
       setEditing(true);
-      await deleteUser(selectedUser.id);
-      setUsers(users.filter((user) => user.id !== selectedUser.id));
-      showAlert('success', 'Usuario eliminado');
+      const { data } = await desactivarUsuario(selectedUser.id);
+      ponerUsuario(data.data);
+      showAlert('success', `Cuenta de ${selectedUser.nombre} desactivada`);
     } catch (error) {
-      showAlert('error', 'No se pudo eliminar el usuario: ' + mensajeDeError(error));
+      showAlert('error', 'No se pudo desactivar la cuenta: ' + mensajeDeError(error));
     } finally {
       setEditing(false);
-      setShowDeleteModal(false);
+      setShowDesactivarModal(false);
       setSelectedUser(null);
     }
   });
+
+  const reactivar = async (user) => {
+    if (reactivando) return;
+    try {
+      setReactivando(user.id);
+      const { data } = await reactivarUsuario(user.id);
+      ponerUsuario(data.data);
+      showAlert('success', `Cuenta de ${user.nombre} reactivada: ya puede volver a entrar`);
+    } catch (error) {
+      showAlert('error', 'No se pudo reactivar la cuenta: ' + mensajeDeError(error));
+    } finally {
+      setReactivando(null);
+    }
+  };
 
   const handleCreateUser = useEnvioUnico(async (event) => {
     event.preventDefault();
@@ -199,9 +222,11 @@ const Users = () => {
 
   const usersArray = useMemo(() => (Array.isArray(users) ? users : []), [users]);
 
-  // La API impide borrar al último administrador; la UI refleja esa misma regla.
-
-  const totalAdmins = usersArray.filter((u) => u.rol === 'admin').length;
+  // La API impide desactivar al último administrador activo; la UI refleja esa
+  // misma regla.
+  const activos = usersArray.filter((u) => u.activo !== false);
+  const totalAdmins = activos.filter((u) => u.rol === 'admin').length;
+  const totalDesactivados = usersArray.length - activos.length;
 
   const filteredUsers = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
@@ -212,6 +237,112 @@ const Users = () => {
   }, [usersArray, searchTerm]);
 
   if (!isAdmin) return null;
+
+  const tarjeta = (user) => {
+    const isSelf = user.id === currentUser?.id;
+    const desactivada = user.activo === false;
+    // La API permite desactivar a un admin salvo que sea el último activo.
+    const esUltimoAdmin = user.rol === 'admin' && totalAdmins <= 1;
+    const noSePuedeDesactivar = isSelf || esUltimoAdmin;
+
+    return (
+      <motion.div
+        key={user.id}
+        layout
+        initial={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.97 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.97 }}
+        transition={reduceMotion ? crossFade : springSheet}
+      >
+        <Card padding="p-0" className="flex h-full flex-col overflow-hidden">
+          <div className={`flex-1 p-5 ${desactivada ? 'opacity-60' : ''}`}>
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <span className="flex h-11 w-11 items-center justify-center rounded-full bg-brand/14 text-subhead font-semibold text-brand">
+                {getInitials(user.nombre)}
+              </span>
+              {desactivada ? (
+                <Badge tone="neutral">Desactivada</Badge>
+              ) : (
+                <Badge tone={user.rol === 'admin' ? 'caution' : 'accent'}>
+                  {user.rol === 'admin' ? 'Administrador' : 'Usuario'}
+                </Badge>
+              )}
+            </div>
+
+            <h3 className="break-words text-headline font-semibold text-label">
+              {user.nombre}
+            </h3>
+            <p className="truncate text-footnote text-label-secondary" title={user.usuario}>
+              {user.usuario}
+            </p>
+
+            {/* Qué puede abrir esta cuenta, de un vistazo. Un admin
+                entra a todo, así que no se le listan módulos. */}
+            {!desactivada && (
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {user.rol === 'admin' ? (
+                  <Badge tone="neutral">Acceso completo</Badge>
+                ) : (
+                  <>
+                    {user.puede_recorridos !== false && <Badge tone="accent">Recorridos</Badge>}
+                    {user.puede_riegos !== false && <Badge tone="info">Riegos</Badge>}
+                    {user.puede_recorridos === false && user.puede_riegos === false && (
+                      <Badge tone="critical">Sin acceso</Badge>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+
+            {isSelf && (
+              <p className="mt-3 text-caption text-label-tertiary">Esta es tu cuenta</p>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 border-t border-separator/60 bg-surface-secondary px-4 py-3">
+            {desactivada ? (
+              <Button
+                variant="secondary" size="sm" className="flex-1"
+                onClick={() => reactivar(user)}
+                loading={reactivando === user.id}
+                icon={<UserCheck size={15} strokeWidth={2.1} />}
+              >
+                Reactivar
+              </Button>
+            ) : (
+              <>
+                <Button
+                  variant="secondary" size="sm" className="flex-1"
+                  onClick={() => openEditForm(user)}
+                  icon={<Pencil size={14} strokeWidth={2.1} />}
+                >
+                  Editar
+                </Button>
+                <Button
+                  variant="ghost" size="sm"
+                  aria-label={`Restablecer contraseña de ${user.nombre}`}
+                  className="px-2.5 text-label-secondary hover:bg-caution/16 hover:text-caution"
+                  onClick={() => openPasswordModal(user)}
+                >
+                  <KeyRound size={16} strokeWidth={2} />
+                </Button>
+                <Button
+                  variant="ghost" size="sm"
+                  aria-label={`Desactivar a ${user.nombre}`}
+                  className="px-2.5 text-label-secondary hover:bg-critical/14 hover:text-critical"
+                  onClick={() => handleDesactivar(user)}
+                  disabled={noSePuedeDesactivar}
+                  title={noSePuedeDesactivar ? 'No se puede desactivar esta cuenta' : 'Desactivar'}
+                >
+                  <UserX size={16} strokeWidth={2} />
+                </Button>
+              </>
+            )}
+          </div>
+        </Card>
+      </motion.div>
+    );
+  };
 
   return (
     <div className="pb-4">
@@ -243,10 +374,18 @@ const Users = () => {
       />
 
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <StatCard label="Total de usuarios" value={loading ? '—' : usersArray.length} icon={UsersIcon} tone="accent" />
+        <StatCard
+          label="Usuarios activos"
+          value={loading ? '—' : activos.length}
+          icon={UsersIcon}
+          tone="accent"
+          footnote={!loading && totalDesactivados > 0
+            ? `${totalDesactivados} ${totalDesactivados === 1 ? 'desactivado' : 'desactivados'}`
+            : undefined}
+        />
         <StatCard
           label="Administradores"
-          value={loading ? '—' : usersArray.filter((user) => user.rol === 'admin').length}
+          value={loading ? '—' : totalAdmins}
           icon={ShieldCheck}
           tone="highlight"
           footnote="Con acceso completo al sistema"
@@ -275,107 +414,39 @@ const Users = () => {
           }
         />
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          <AnimatePresence initial={false}>
-            {filteredUsers.map((user) => {
-              const isSelf = user.id === currentUser?.id;
-              // La API permite borrar a un admin salvo que sea el último que
-              // queda. Bloquear a todos los admin dejaba cuentas imborrables.
-              const esUltimoAdmin = user.rol === 'admin' && totalAdmins <= 1;
-              const cannotDelete = isSelf || esUltimoAdmin;
-
-              return (
-                <motion.div
-                  key={user.id}
-                  layout
-                  initial={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.97 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.97 }}
-                  transition={reduceMotion ? crossFade : springSheet}
-                >
-                  <Card padding="p-0" className="flex h-full flex-col overflow-hidden">
-                    <div className="flex-1 p-5">
-                      <div className="mb-4 flex items-start justify-between gap-3">
-                        <span className="flex h-11 w-11 items-center justify-center rounded-full bg-brand/14 text-subhead font-semibold text-brand">
-                          {getInitials(user.nombre)}
-                        </span>
-                        <Badge tone={user.rol === 'admin' ? 'caution' : 'accent'}>
-                          {user.rol === 'admin' ? 'Administrador' : 'Usuario'}
-                        </Badge>
-                      </div>
-
-                      <h3 className="break-words text-headline font-semibold text-label">
-                        {user.nombre}
-                      </h3>
-                      <p className="truncate text-footnote text-label-secondary" title={user.usuario}>
-                        {user.usuario}
-                      </p>
-
-                      {/* Qué puede abrir esta cuenta, de un vistazo. Un admin
-                          entra a todo, así que no se le listan módulos. */}
-                      <div className="mt-3 flex flex-wrap gap-1.5">
-                        {user.rol === 'admin' ? (
-                          <Badge tone="neutral">Acceso completo</Badge>
-                        ) : (
-                          <>
-                            {user.puede_recorridos !== false && <Badge tone="accent">Recorridos</Badge>}
-                            {user.puede_riegos !== false && <Badge tone="info">Riegos</Badge>}
-                            {user.puede_recorridos === false && user.puede_riegos === false && (
-                              <Badge tone="critical">Sin acceso</Badge>
-                            )}
-                          </>
-                        )}
-                      </div>
-
-                      {isSelf && (
-                        <p className="mt-3 text-caption text-label-tertiary">Esta es tu cuenta</p>
-                      )}
-                    </div>
-
-                    <div className="flex items-center gap-2 border-t border-separator/60 bg-surface-secondary px-4 py-3">
-                      <Button
-                        variant="secondary" size="sm" className="flex-1"
-                        onClick={() => openEditForm(user)}
-                        icon={<Pencil size={14} strokeWidth={2.1} />}
-                      >
-                        Editar
-                      </Button>
-                      <Button
-                        variant="ghost" size="sm"
-                        aria-label={`Restablecer contraseña de ${user.nombre}`}
-                        className="px-2.5 text-label-secondary hover:bg-caution/16 hover:text-caution"
-                        onClick={() => openPasswordModal(user)}
-                      >
-                        <KeyRound size={16} strokeWidth={2} />
-                      </Button>
-                      <Button
-                        variant="ghost" size="sm"
-                        aria-label={`Eliminar a ${user.nombre}`}
-                        className="px-2.5 text-label-secondary hover:bg-critical/14 hover:text-critical"
-                        onClick={() => handleDeleteUser(user.id)}
-                        disabled={cannotDelete}
-                        title={cannotDelete ? 'No se puede eliminar esta cuenta' : undefined}
-                      >
-                        <Trash2 size={16} strokeWidth={2} />
-                      </Button>
-                    </div>
-                  </Card>
-                </motion.div>
-              );
-            })}
-          </AnimatePresence>
-        </div>
+        <>
+          {[
+            { clave: 'activos', lista: filteredUsers.filter((u) => u.activo !== false) },
+            { clave: 'desactivados', lista: filteredUsers.filter((u) => u.activo === false) },
+          ].filter(({ lista }) => lista.length > 0).map(({ clave, lista }) => (
+            <section key={clave} className={clave === 'desactivados' ? 'mt-8' : ''}>
+              {clave === 'desactivados' && (
+                <div className="mb-3">
+                  <h2 className="text-headline font-semibold text-label">Desactivados</h2>
+                  <p className="text-footnote text-label-secondary">
+                    No pueden entrar. Sus recorridos, riegos y cierres se conservan.
+                  </p>
+                </div>
+              )}
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                <AnimatePresence initial={false}>
+                  {lista.map((user) => tarjeta(user))}
+                </AnimatePresence>
+              </div>
+            </section>
+          ))}
+        </>
       )}
 
       <ConfirmModal
-        isOpen={showDeleteModal}
-        onClose={() => setShowDeleteModal(false)}
-        onConfirm={confirmDelete}
+        isOpen={showDesactivarModal}
+        onClose={() => setShowDesactivarModal(false)}
+        onConfirm={confirmarDesactivar}
         loading={editing}
-        title="Eliminar usuario"
-        message={`${selectedUser?.nombre ?? 'Este usuario'} perderá el acceso de forma permanente. No se puede deshacer.`}
-        confirmText="Eliminar"
-        type="danger"
+        title="Desactivar usuario"
+        message={`${selectedUser?.nombre ?? 'Esta persona'} no podrá entrar y se cerrarán sus sesiones. Sus recorridos, riegos y cierres se conservan, y puedes reactivar la cuenta cuando quieras.`}
+        confirmText="Desactivar"
+        type="warning"
       />
 
       {/* Crear y editar: el mismo formulario (components/formulario) */}

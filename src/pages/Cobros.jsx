@@ -223,6 +223,11 @@ const Cobros = () => {
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
                       <p className="break-words text-headline font-semibold text-label">{f.nombre}</p>
+                      {f.activo === false && (
+                        <span className="rounded-full bg-fill/12 px-2 py-0.5 text-caption font-semibold text-label-secondary">
+                          Desactivada
+                        </span>
+                      )}
                       <span className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-caption font-semibold ${clases}`}>
                         <Icono size={12} strokeWidth={2.4} aria-hidden="true" />
                         {texto}
